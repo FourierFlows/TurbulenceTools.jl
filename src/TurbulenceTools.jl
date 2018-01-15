@@ -26,10 +26,10 @@ function runstochasticforcingproblem(; n=128, L=2π, ν=4e-3, nν=1,
   if output
     out = getsimpleoutput(prob; filename=filename)
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
-      plotname=plotname, forcing="stochastic")
+      plotname=plotname, stochasticforcing=true)
   else
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, 
-      plotname=plotname, forcing="stochastic")
+      plotname=plotname, stochasticforcing=true)
   end
 
   nothing
@@ -159,7 +159,7 @@ function getsteadyforcingproblem(; n=128, L=2π, ν=2e-3, nν=1, μ=1e-1, nμ=-1
   prob, diags, nt
 end
 
-function makeplot(prob, diags; forcing="steady")
+function makeplot(prob, diags; stochasticforcing=false)
 
   TwoDTurb.updatevars!(prob)  
   E, Z, D, I, R = diags
@@ -180,17 +180,17 @@ function makeplot(prob, diags; forcing="steady")
 
   # dEdt = I - D - R?
   dEdt₁ = I[ii] - D[ii] - R[ii]
-  residual = dEdt - total
+  residual = dEdt - dEdt₁
 
   plot(E.time[ii], I[ii], label="injection (\$I\$)")
   plot(E.time[ii], -D[ii], label="dissipation (\$D\$)")
   plot(E.time[ii], -R[ii], label="drag (\$R\$)")
   plot(E.time[ii], residual, "c-", label="residual")
 
-  #if forcing == "steady"
-  #  plot(E.time[ii], dEdt₁, label=L"I-D-R")
-  #  plot(E.time[ii], dEdt, "k:", label=L"E_t")
-  #end
+  if !stochasticforcing
+    plot(E.time[ii], dEdt₁, label=L"I-D-R")
+    plot(E.time[ii], dEdt, "k:", label=L"E_t")
+  end
 
   ylabel("Energy sources and sinks")
   xlabel(L"t")
@@ -209,7 +209,7 @@ end
 
 
 function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
-                        forcing="steady", plotname=nothing)
+                        stochasticforcing=false, plotname=nothing)
   for i = 1:ns
     tic()
     stepforward!(prob, diags, round(Int, nt/ns))
@@ -220,7 +220,7 @@ function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
       prob.step, prob.t, cfl(prob), tc, mean(res))
 
     if withplot     
-      makeplot(prob, diags; forcing=forcing)
+      makeplot(prob, diags; stochasticforcing=stochasticforcing)
       if plotname != nothing
         fullplotname = @sprintf("%s_%d.png", plotname, prob.step)
         savefig(fullplotname, dpi=240)
