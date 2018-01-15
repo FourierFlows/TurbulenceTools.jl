@@ -39,7 +39,7 @@ function makeplot(prob, diags; stochasticforcing=false)
 
   ylabel("Energy sources and sinks")
   xlabel(L"t")
-  legend(fontsize=10)
+  legend(fontsize=10, loc="lower right")
 
   sca(axs[3]); cla()
   plot(E.time[ii], E[ii])

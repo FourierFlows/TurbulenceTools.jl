@@ -118,7 +118,10 @@ function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
     if withplot     
       makeplot(prob, diags; stochasticforcing=stochasticforcing)
       if plotname != nothing
-        fullplotname = @sprintf("%s_%d.png", plotname, prob.step)
+        plotdir = joinpath(".", "plots")
+        fullplotname = joinpath(plotdir, 
+          @sprintf("%s_%d.png", plotname, prob.step))
+        if !isdir(plotdir); mkdir(plotdir); end
         savefig(fullplotname, dpi=240)
       end
     end
