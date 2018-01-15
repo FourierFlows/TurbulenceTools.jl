@@ -18,38 +18,40 @@ end
 
 function runstochasticforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, 
   μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, withplot=false, 
-  output=nothing, stepper="RK4", plotname=nothing)
+  output=false, stepper="RK4", plotname=nothing, filename="default")
 
   prob, diags, nt = getstochasticforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ,
      nμ=nμ, dt=dt, fi=fi, ki=ki, tf=tf, stepper=stepper)
 
-  if output != nothing
-    out = getsimpleoutput(prob)
+  if output
+    out = getsimpleoutput(prob; filename=filename)
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
       plotname=plotname, forcing="stochastic")
   else
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, 
       plotname=plotname, forcing="stochastic")
   end
+
   nothing
 end
 
 
 function runsteadyforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, μ=1e-1, nμ=-1, 
-  dt=1e-2, fi=1.0, ki=8, θ=π/4, tf=10, ns=1, withplot=false, output=nothing,
-  stepper="RK4")
+  dt=1e-2, fi=1.0, ki=8, θ=π/4, tf=10, ns=1, withplot=false, output=false,
+  stepper="RK4", filename="default")
 
   prob, diags, nt = getsteadyforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ, nμ=nμ,
     dt=dt, fi=fi, ki=ki, θ=θ, tf=tf, stepper=stepper)
 
-  if output != nothing
-    out = getsimpleoutput(prob)
+  if output
+    out = getsimpleoutput(prob; filename=filename)
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
       plotname=plotname)
   else
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, 
       plotname=plotname)
   end
+
   nothing
 end
 
@@ -115,7 +117,7 @@ function getchan2012prob(n, ν, ki; dt=1e-2, tf=1000)
 end 
 
 
-function getsimpleoutput(prob)
+function getsimpleoutput(prob; filename="default")
   getsol(prob) = deepcopy(prob.state.sol)
   Output(prob, filename, (:sol, getsol))
 end
@@ -177,7 +179,7 @@ function makeplot(prob, diags; forcing="steady")
   ii = (i₀+1):E.count
 
   # dEdt = I - D - R?
-  total = I[ii] - D[ii] - R[ii]
+  dEdt₁ = I[ii] - D[ii] - R[ii]
   residual = dEdt - total
 
   plot(E.time[ii], I[ii], label="injection (\$I\$)")
@@ -185,10 +187,10 @@ function makeplot(prob, diags; forcing="steady")
   plot(E.time[ii], -R[ii], label="drag (\$R\$)")
   plot(E.time[ii], residual, "c-", label="residual")
 
-  if forcing == "steady"
-    plot(E.time[ii], total, label=L"I-D-R")
-    plot(E.time[ii], dEdt, "k:", label=L"E_t")
-  end
+  #if forcing == "steady"
+  #  plot(E.time[ii], dEdt₁, label=L"I-D-R")
+  #  plot(E.time[ii], dEdt, "k:", label=L"E_t")
+  #end
 
   ylabel("Energy sources and sinks")
   xlabel(L"t")
