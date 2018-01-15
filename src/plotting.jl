@@ -25,14 +25,16 @@ function makeplot(prob, diags; stochasticforcing=false)
   dEdt₁ = I[ii] - D[ii] - R[ii]
   residual = dEdt - dEdt₁
 
-  plot(E.time[ii], I[ii], label="injection (\$I\$)")
   plot(E.time[ii], -D[ii], label="dissipation (\$D\$)")
   plot(E.time[ii], -R[ii], label="drag (\$R\$)")
   plot(E.time[ii], residual, "c-", label="residual")
 
   if !stochasticforcing
-    plot(E.time[ii], dEdt₁, label=L"I-D-R")
+    plot(E.time[ii], I[ii], label="injection (\$I\$)")
     plot(E.time[ii], dEdt, "k:", label=L"E_t")
+    plot(E.time[ii], dEdt₁, label=L"I-D-R")
+  else
+    plot(E.time[ii], I[ii], "o", markersize=0.5, label="injection (\$I\$)")
   end
 
   ylabel("Energy sources and sinks")
