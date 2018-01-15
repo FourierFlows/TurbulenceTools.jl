@@ -18,18 +18,18 @@ end
 
 function runstochasticforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, 
   μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, withplot=false, 
-  output=nothing, stepper="RK4")
+  output=nothing, stepper="RK4", plotname=nothing)
 
   prob, diags, nt = getstochasticforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ,
      nμ=nμ, dt=dt, fi=fi, ki=ki, tf=tf, stepper=stepper)
 
   if output != nothing
     out = getsimpleoutput(prob)
-    savename = @sprintf("stochastic_ki%d_ν%.2e_μ%.2e.png", ki, ν, μ)
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
-      savename=savename, forcing="stochastic")
+      plotname=plotname, forcing="stochastic")
   else
-    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns)
+    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, 
+      plotname=plotname, forcing="stochastic")
   end
   nothing
 end
@@ -44,11 +44,11 @@ function runsteadyforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, μ=1e-1, nμ=-1
 
   if output != nothing
     out = getsimpleoutput(prob)
-    savename = @sprintf("steady_ki%d_ν%.2e_μ%.2e.png", ki, ν, μ)
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
-      savename=savename)
+      plotname=plotname)
   else
-    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns)
+    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, 
+      plotname=plotname)
   end
   nothing
 end
@@ -207,7 +207,7 @@ end
 
 
 function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
-                        forcing="steady", savename=nothing)
+                        forcing="steady", plotname=nothing)
   for i = 1:ns
     tic()
     stepforward!(prob, diags, round(Int, nt/ns))
@@ -219,9 +219,9 @@ function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
 
     if withplot     
       makeplot(prob, diags; forcing=forcing)
-      if savename != nothing
-        fullsavename = @sprintf("%s_%d.png", savename, prob.step)
-        savefig(fullsavename, dpi=240)
+      if plotname != nothing
+        fullplotname = @sprintf("%s_%d.png", plotname, prob.step)
+        savefig(fullplotname, dpi=240)
       end
     end
 
