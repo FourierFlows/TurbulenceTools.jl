@@ -2,19 +2,20 @@ include("./turbtools.jl")
 
 using PyPlot
 
- T = Float32
- n = 128
+ T = Float64
+ n = 512
  L = T(2π)
  ν = T(8e-5)       # Laplacian viscosity
+ μ = T(0)          # Laplacian viscosity
 nν = 2
 dt = T(1e-2)       # Time step
 nsteps = 5000      # Number of time steps
 
-prob = Problem(n, L, ν, nν, dt)
+prob = Problem(n, L, ν, nν, μ, dt)
 
 q₀ = rand(n, n)
 qh₀ = rfft(q₀)
-prob.vars.qh .= qh₀
+@. prob.vars.qh = qh₀
 
 # Step forward
 plots = 5
@@ -26,7 +27,7 @@ for i = 1:plots
   @printf("step: %04d, t: %6.1f, cfl: %.2f, ", prob.step, prob.t, cfl)
   toc(); tic()
 
-  clf(); imshow(prob.vars.q); pause(0.01)
+  #clf(); imshow(prob.vars.q); pause(0.01)
 end
 
 

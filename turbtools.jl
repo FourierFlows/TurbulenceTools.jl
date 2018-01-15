@@ -1,159 +1,228 @@
-# Tools for a simple turbulence code.
 __precompile__()
+module TurbulenceTools
 
-import Base: eltype
+using FourierFlows, PyPlot
+import FourierFlows.TwoDTurb
+import FourierFlows.TwoDTurb: energy, enstrophy, dissipation, injection, drag
 
+export getdiags, savediags, cfl, getsteadyforcingproblem, runwithmessage,
+       getstochasticforcingproblem, makeplot, getresidual, getsimpleoutput,
+       runsteadyforcingproblem, runstochasticforcingproblem
 
-struct Grid{T}
-  nx::Int
-  Lx::T
-  dx::T
-  ny::Int
-  Ly::T
-  dy::T
-  nk::Int
-  nl::Int
-  x::Array{T,2}
-  y::Array{T,2}
-  k::Array{T,2}
-  l::Array{T,2}
-  X::Array{T,2}
-  Y::Array{T,2}
-  Ksq::Array{T,2}
-  invKsq::Array{T,2}
-  rfftplan::Base.DFT.FFTW.rFFTWPlan{T, -1, false, 2}
-  irfftplan::Base.DFT.ScaledPlan{Complex{T},
-    Base.DFT.FFTW.rFFTWPlan{Complex{T}, 1, false, 2}, T}
+function runsteadyforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, μ=1e-1, nμ=-1, 
+  dt=1e-2, fi=1.0, ki=8, θ=π/4, tf=10, ns=1, withplot=false, output=nothing,
+  stepper="RK4")
+
+  prob, diags, nt = getsteadyforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ, nμ=nμ,
+    dt=dt, fi=fi, ki=ki, θ=θ, tf=tf, stepper=stepper)
+
+  if output != nothing
+    out = getsimpleoutput(prob)
+    savename = @sprintf("steady_ki%d_ν%.2e_μ%.2e.png", ki, ν, μ)
+    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
+      savename=savename)
+  else
+    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns)
+  end
+  nothing
 end
 
-function Grid(n, L; effort=FFTW.MEASURE, nthreads=Sys.CPU_CORES)
-  T = typeof(L)
-  Δ = T(n/L)
-
-  x = reshape(linspace(T(-L/2), T(L/2-Δ), n), (n, 1))
-  y = reshape(x, (1, n))
-
-  X = [ x[i] for i=1:n, j=1:n ]
-  Y = [ y[j] for i=1:n, j=1:n ]
-
-  nk = Int(n/2+1)
-  i₁ = 0:Int(n/2)
-  i₂ = Int(-n/2+1):-1
-
-  k = reshape(T(2π/L)*i₁, (nk, 1))
-  l = reshape(T(2π/L)*cat(1, i₁, i₂), (1, n))
-
-  Ksq = k.^2 .+ l.^2
-  invKsq = 1./Ksq
-  invKsq[1, 1] = 0
-
-  # FFT plans
-  FFTW.set_num_threads(nthreads)
-  rfftplan  = plan_rfft(Array{T,2}(n, n); flags=effort)
-  irfftplan = plan_irfft(Array{Complex{T},2}(nk, n), n; flags=effort)
-
-  Grid{T}(n, L, Δ, n, L, Δ, nk, n, x, y, k, l, X, Y, Ksq, invKsq,
-          rfftplan, irfftplan)
+function cfl(prob)
+  prob.ts.dt*maximum(
+    [maximum(prob.vars.V)/prob.grid.dx, maximum(prob.vars.U)/prob.grid.dy])
 end
 
-eltype{T}(::Type{Grid{T}}) = T
-eltype(g::Grid) = eltype(typeof(g))
-
-macro physvars(g, vars...)
-  expr = Expr(:block)
-  append!(expr.args, 
-    [:( $(esc(var)) = zeros(
-      eltype($(esc(g))), $(esc(g)).nx, $(esc(g)).ny);) for var in vars]
-  )
-  expr
+function getresidual(prob, E, I, D, R; i₀=1)
+  dEdt₀ = (E[(i₀+1):E.count] - E[i₀:E.count-1])/prob.ts.dt
+  ii = (i₀+1):E.count
+  dEdt₁ = I[ii] - D[ii] - R[ii] # dEdt = I - D - R
+  dEdt₀ - dEdt₁
 end
 
-macro transvars(g, vars...)
-  expr = Expr(:block)
-  append!(expr.args, 
-    [:( $(esc(var)) = zeros(
-      Complex{eltype($(esc(g)))}, $(esc(g)).nk, $(esc(g)).nl);) 
-      for var in vars]
-  )
-  expr
+function getresidual(prob, diags; kwargs...)
+  E, Z, D, I, R = diags
+  getresidual(prob, E, I, D, R; kwargs...)
 end
 
+function getdiags(prob, nt)
+  E = Diagnostic(energy,      prob, nsteps=nt)
+  Z = Diagnostic(enstrophy,   prob, nsteps=nt)
+  D = Diagnostic(dissipation, prob, nsteps=nt)
+  R = Diagnostic(drag,        prob, nsteps=nt)
+  I = Diagnostic(injection,   prob, nsteps=nt)
+  diags = [E, Z, D, I, R]
 
-
-
-struct Vars{T}
-  u::Array{T,2}
-  v::Array{T,2}
-  q::Array{T,2}
-  uq::Array{T,2}
-  vq::Array{T,2}
-  uh::Array{Complex{T},2}
-  vh::Array{Complex{T},2}
-  qh::Array{Complex{T},2}
-  qth::Array{Complex{T},2}
-  psih::Array{Complex{T},2}
-  uqh::Array{Complex{T},2}
-  vqh::Array{Complex{T},2}
+  diags
 end
 
-function Vars(g)
-  T = eltype(g)
-  @physvars g u v q uq vq
-  @transvars g uh vh qh qth psih uqh vqh
-  Vars(u, v, q, uq, vq, uh, vh, qh, qth, psih, uqh, vqh)
+function getstochasticforcingproblem(; n=128, L=2π, ν=1e-3, nν=1, 
+  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4")
+
+  amplitude = fi*ki/sqrt(dt) * n^2/4
+  function calcF!(F, sol, t, s, v, p, g)
+    if t == s.t # not a substep
+      F .= 0.0
+      θk = 2π*rand() 
+      phase = 2π*im*rand()
+      i₁ = round(Int, abs(ki*cos(θk))) + 1
+      j₁ = round(Int, abs(ki*sin(θk))) + 1  # j₁ >= 1
+      j₂ = g.nl + 2 - j₁                    # e.g. j₁ = 1 => j₂ = nl+1
+      if j₁ != 1  # apply forcing to l = (+/-)l★ mode
+        F[i₁, j₁] = amplitude*exp(phase)
+        F[i₁, j₂] = amplitude*exp(phase)
+      else        # apply forcing to l=0 mode
+        F[i₁, 1] = 2amplitude*exp(phase)
+      end
+    end
+    nothing
+  end
+
+  nt = round(Int, tf/dt)
+  prob = TwoDTurb.ForcedProblem(nx=n, Lx=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
+    calcF=calcF!, stepper=stepper)
+  diags = getdiags(prob, nt)
+
+  prob, diags, nt
 end
 
+function getchan2012prob(n, ν, ki; dt=1e-2, tf=1000)
+  getstochasticforcingproblem(n=n, ν=ν, nν=1, μ=0, dt=dt, fi=1, ki=ki, tf=tf)
+end 
 
-struct Params{T}
-  ν::T
-  nν::Int
-  dt::T
-end
+function runstochasticforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, 
+  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, withplot=false, 
+  output=nothing, stepper="RK4")
 
+  prob, diags, nt = getstochasticforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ,
+     nμ=nμ, dt=dt, fi=fi, ki=ki, tf=tf, stepper=stepper)
 
-mutable struct Problem{T}
-  grid::Grid{T}
-  vars::Vars{T}
-  params::Params{T}
-  t::T
-  step::Int
-end  
-
-function Problem(n, L, ν, nν, dt; kwargs...)
-  g = Grid(n, L; kwargs...)
-  v = Vars(g)
-  p = Params(ν, nν, dt)
-  Problem{typeof(L)}(g, v, p, 0.0, 0)
+  if output != nothing
+    out = getsimpleoutput(prob)
+    savename = @sprintf("stochastic_ki%d_ν%.2e_μ%.2e.png", ki, ν, μ)
+    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
+      savename=savename)
+  else
+    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns)
+  end
+  nothing
 end
 
 
-function stepforward!(v, p, g)
-  # Calculate right hand side of vorticity equation.
-  @. v.qth = v.qh 
-  A_mul_B!(v.q, g.irfftplan, v.qth)
-
-  @. v.uh =  im*g.l*g.invKsq*v.qh
-  @. v.vh = -im*g.k*g.invKsq*v.qh
-
-  A_mul_B!(v.u, g.irfftplan, v.uh)
-  A_mul_B!(v.v, g.irfftplan, v.vh)
-
-  @. v.uq = v.u*v.q
-  @. v.vq = v.v*v.q
-
-  A_mul_B!(v.uqh, g.rfftplan, v.uq)
-  A_mul_B!(v.vqh, g.rfftplan, v.vq)
-
-  # Step forward
-  @. v.qh += p.dt*(
-    -im*g.k*v.uqh - im*g.l*v.vqh - p.ν*g.Ksq^(0.5*p.nν)*v.qh
-  )
+function getsimpleoutput(prob)
+  getsol(prob) = deepcopy(prob.state.sol)
+  Output(prob, filename, (:sol, getsol))
 end
 
-function stepforward!(prob::Problem, nsteps)
-  for i = 1:nsteps
-    stepforward!(prob.vars, prob.params, prob.grid)
-    prob.t += prob.params.dt
-    prob.step += 1
+function savediags(out, diags)
+  E, Z, D, I, R = diags
+  savediagnostic(E, "energy", out.filename)
+  savediagnostic(Z, "enstrophy", out.filename)
+  savediagnostic(D, "dissipation", out.filename)
+  savediagnostic(I, "injection", out.filename)
+  savediagnostic(R, "drag", out.filename)
+  nothing
+end
+
+
+
+function getsteadyforcingproblem(; n=128, L=2π, ν=2e-3, nν=1, μ=1e-1, nμ=-1, 
+  dt=1e-2, fi=1.0, ki=8, θ=π/4, tf=10, stepper="RK4")
+  
+  i₁ = round(Int, abs(ki*cos(θ))) + 1
+  j₁ = round(Int, abs(ki*sin(θ))) + 1  # j₁ >= 1
+  j₂ = n + 2 - j₁                       # e.g. j₁ = 1 => j₂ = nl+1
+
+  amplitude = fi*ki * n^2/4
+  function calcF!(F, sol, t, s, v, p, g)
+    if s.step == 1
+      F[i₁, j₁] = amplitude
+      F[i₁, j₂] = amplitude
+    end
+    nothing
+  end
+
+  nt = round(Int, tf/dt)
+  prob = TwoDTurb.ForcedProblem(nx=n, Lx=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
+    calcF=calcF!, stepper=stepper)
+  TwoDTurb.set_q!(prob, rand(prob.grid.nx, prob.grid.ny))
+  diags = getdiags(prob, nt)
+
+  prob, diags, nt
+end
+
+function makeplot(prob, diags; forcing="steady")
+
+  TwoDTurb.updatevars!(prob)  
+  E, Z, D, I, R = diags
+
+  close("all")
+  fig, axs = subplots(ncols=3, nrows=1, figsize=(13, 4))
+
+  sca(axs[1]); cla()
+  pcolormesh(prob.grid.X, prob.grid.Y, prob.vars.q)
+  xlabel(L"x")
+  ylabel(L"y")
+
+  sca(axs[2]); cla()
+
+  i₀ = 1
+  dEdt = (E[(i₀+1):E.count] - E[i₀:E.count-1])/prob.ts.dt
+  ii = (i₀+1):E.count
+
+  # dEdt = I - D - R?
+  total = I[ii] - D[ii] - R[ii]
+  residual = dEdt - total
+
+  plot(E.time[ii], I[ii], label="injection (\$I\$)")
+  plot(E.time[ii], -D[ii], label="dissipation (\$D\$)")
+  plot(E.time[ii], -R[ii], label="drag (\$R\$)")
+  plot(E.time[ii], residual, "c-", label="residual")
+
+  if forcing == "steady"
+    plot(E.time[ii], total, label=L"I-D-R")
+    plot(E.time[ii], dEdt, "k:", label=L"E_t")
+  end
+
+  ylabel("Energy sources and sinks")
+  xlabel(L"t")
+  legend(fontsize=10)
+
+  sca(axs[3]); cla()
+  plot(E.time[ii], E[ii])
+  xlabel(L"t")
+  ylabel(L"E")
+
+  tight_layout()
+  pause(0.1)
+
+  nothing
+end
+
+
+function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
+                        forcing="steady", savename="test.png")
+  for i = 1:ns
+    tic()
+    stepforward!(prob, diags, round(Int, nt/ns))
+    tc = toq()
+
+    TwoDTurb.updatevars!(prob)  
+
+
+    res = getresidual(prob, diags)
+
+    @printf("step: %04d, t: %.1f, cfl: %.3f, time: %.2f s, mean(res) = %.3e\n", 
+      prob.step, prob.t, cfl(prob), tc, mean(res))
+    
+    if withplot
+      makeplot(prob, diags; forcing=forcing)
+    end
+
+    if output != nothing
+      saveoutput(out)
+      savefig(savename, dpi=240)
+    end
   end
 end
+
+end # module
