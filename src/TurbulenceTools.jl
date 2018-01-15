@@ -9,6 +9,32 @@ export getdiags, savediags, cfl, getsteadyforcingproblem, runwithmessage,
        getstochasticforcingproblem, makeplot, getresidual, getsimpleoutput,
        runsteadyforcingproblem, runstochasticforcingproblem
 
+
+function cfl(prob)
+  prob.ts.dt*maximum(
+    [maximum(prob.vars.V)/prob.grid.dx, maximum(prob.vars.U)/prob.grid.dy])
+end
+
+
+function runstochasticforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, 
+  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, withplot=false, 
+  output=nothing, stepper="RK4")
+
+  prob, diags, nt = getstochasticforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ,
+     nμ=nμ, dt=dt, fi=fi, ki=ki, tf=tf, stepper=stepper)
+
+  if output != nothing
+    out = getsimpleoutput(prob)
+    savename = @sprintf("stochastic_ki%d_ν%.2e_μ%.2e.png", ki, ν, μ)
+    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
+      savename=savename, forcing="stochastic")
+  else
+    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns)
+  end
+  nothing
+end
+
+
 function runsteadyforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, μ=1e-1, nμ=-1, 
   dt=1e-2, fi=1.0, ki=8, θ=π/4, tf=10, ns=1, withplot=false, output=nothing,
   stepper="RK4")
@@ -27,10 +53,6 @@ function runsteadyforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, μ=1e-1, nμ=-1
   nothing
 end
 
-function cfl(prob)
-  prob.ts.dt*maximum(
-    [maximum(prob.vars.V)/prob.grid.dx, maximum(prob.vars.U)/prob.grid.dy])
-end
 
 function getresidual(prob, E, I, D, R; i₀=1)
   dEdt₀ = (E[(i₀+1):E.count] - E[i₀:E.count-1])/prob.ts.dt
@@ -44,6 +66,7 @@ function getresidual(prob, diags; kwargs...)
   getresidual(prob, E, I, D, R; kwargs...)
 end
 
+
 function getdiags(prob, nt)
   E = Diagnostic(energy,      prob, nsteps=nt)
   Z = Diagnostic(enstrophy,   prob, nsteps=nt)
@@ -54,6 +77,7 @@ function getdiags(prob, nt)
 
   diags
 end
+
 
 function getstochasticforcingproblem(; n=128, L=2π, ν=1e-3, nν=1, 
   μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4")
@@ -85,33 +109,17 @@ function getstochasticforcingproblem(; n=128, L=2π, ν=1e-3, nν=1,
   prob, diags, nt
 end
 
+
 function getchan2012prob(n, ν, ki; dt=1e-2, tf=1000)
   getstochasticforcingproblem(n=n, ν=ν, nν=1, μ=0, dt=dt, fi=1, ki=ki, tf=tf)
 end 
-
-function runstochasticforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, 
-  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, withplot=false, 
-  output=nothing, stepper="RK4")
-
-  prob, diags, nt = getstochasticforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ,
-     nμ=nμ, dt=dt, fi=fi, ki=ki, tf=tf, stepper=stepper)
-
-  if output != nothing
-    out = getsimpleoutput(prob)
-    savename = @sprintf("stochastic_ki%d_ν%.2e_μ%.2e.png", ki, ν, μ)
-    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
-      savename=savename)
-  else
-    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns)
-  end
-  nothing
-end
 
 
 function getsimpleoutput(prob)
   getsol(prob) = deepcopy(prob.state.sol)
   Output(prob, filename, (:sol, getsol))
 end
+
 
 function savediags(out, diags)
   E, Z, D, I, R = diags
@@ -122,7 +130,6 @@ function savediags(out, diags)
   savediagnostic(R, "drag", out.filename)
   nothing
 end
-
 
 
 function getsteadyforcingproblem(; n=128, L=2π, ν=2e-3, nν=1, μ=1e-1, nμ=-1, 
@@ -200,28 +207,28 @@ end
 
 
 function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
-                        forcing="steady", savename="test.png")
+                        forcing="steady", savename=nothing)
   for i = 1:ns
     tic()
     stepforward!(prob, diags, round(Int, nt/ns))
     tc = toq()
-
     TwoDTurb.updatevars!(prob)  
-
-
-    res = getresidual(prob, diags)
-
+    res = getresidual(prob, diags) # residual = dEdt - I + D + R
     @printf("step: %04d, t: %.1f, cfl: %.3f, time: %.2f s, mean(res) = %.3e\n", 
       prob.step, prob.t, cfl(prob), tc, mean(res))
-    
-    if withplot
+
+    if withplot     
       makeplot(prob, diags; forcing=forcing)
+      if savename != nothing
+        fullsavename = @sprintf("%s_%d.png", savename, prob.step)
+        savefig(fullsavename, dpi=240)
+      end
     end
 
     if output != nothing
       saveoutput(out)
-      savefig(savename, dpi=240)
     end
+
   end
 end
 
