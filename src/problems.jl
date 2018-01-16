@@ -3,14 +3,14 @@ export getsteadyforcingproblem, runwithmessage, getstochasticforcingproblem,
 
 function runstochasticforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, 
   μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, withplot=false, 
-  output=false, stepper="RK4", plotname=nothing, filename="default")
+  withoutput=false, stepper="RK4", plotname=nothing, filename="default")
 
   prob, diags, nt = getstochasticforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ,
      nμ=nμ, dt=dt, fi=fi, ki=ki, tf=tf, stepper=stepper)
 
-  if output
-    out = getbasicoutput(prob; filename=filename)
-    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
+  if withoutput
+    output = getbasicoutput(prob; filename=filename)
+    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=output,
       plotname=plotname, stochasticforcing=true)
   else
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, 
@@ -22,15 +22,15 @@ end
 
 
 function runsteadyforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, μ=1e-1, nμ=-1, 
-  dt=1e-2, fi=1.0, ki=8, θ=π/4, tf=10, ns=1, withplot=false, output=false,
+  dt=1e-2, fi=1.0, ki=8, θ=π/4, tf=10, ns=1, withplot=false, withoutput=false,
   stepper="RK4", filename="default")
 
   prob, diags, nt = getsteadyforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ, nμ=nμ,
     dt=dt, fi=fi, ki=ki, θ=θ, tf=tf, stepper=stepper)
 
-  if output
-    out = getbasicoutput(prob; filename=filename)
-    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
+  if withoutput
+    output = getbasicoutput(prob; filename=filename)
+    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=output,
       plotname=plotname)
   else
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, 
@@ -127,7 +127,7 @@ function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
     end
 
     if output != nothing
-      saveoutput(out)
+      saveoutput(output)
     end
 
   end

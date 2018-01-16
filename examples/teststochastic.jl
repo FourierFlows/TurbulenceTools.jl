@@ -19,6 +19,6 @@ for ki = [16, 32, 64]
 
   runstochasticforcingproblem(fi=fi, ki=ki, tf=tf, dt=5e-3, withplot=true, 
     ns=10, n=n, ν=ν, μ=μ, stepper="FilteredRK4", plotname=plotname,
-    output=true, filename=plotname)
+    withoutput=true, filename=plotname)
 
 end
