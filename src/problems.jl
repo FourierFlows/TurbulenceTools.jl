@@ -9,7 +9,7 @@ function runstochasticforcingproblem(; n=128, L=2π, ν=4e-3, nν=1,
      nμ=nμ, dt=dt, fi=fi, ki=ki, tf=tf, stepper=stepper)
 
   if output
-    out = getsimpleoutput(prob; filename=filename)
+    out = getbasicoutput(prob; filename=filename)
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
       plotname=plotname, stochasticforcing=true)
   else
@@ -29,7 +29,7 @@ function runsteadyforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, μ=1e-1, nμ=-1
     dt=dt, fi=fi, ki=ki, θ=θ, tf=tf, stepper=stepper)
 
   if output
-    out = getsimpleoutput(prob; filename=filename)
+    out = getbasicoutput(prob; filename=filename)
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=out,
       plotname=plotname)
   else
