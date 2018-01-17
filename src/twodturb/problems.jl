@@ -1,40 +1,27 @@
 export getsteadyforcingproblem, runwithmessage, getstochasticforcingproblem,
-       runsteadyforcingproblem, runstochasticforcingproblem
+       runforcingproblem
 
-function runstochasticforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, 
-  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, withplot=false, 
-  withoutput=false, stepper="RK4", plotname=nothing, filename="default")
 
-  prob, diags, nt = getstochasticforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ,
-     nμ=nμ, dt=dt, fi=fi, ki=ki, tf=tf, stepper=stepper)
+function runforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, 
+  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, θ=π/4, 
+  withplot=false, withoutput=false, stepper="RK4", plotname=nothing,
+  filename="default", stochastic=false)
 
-  if withoutput
-    output = getbasicoutput(prob; filename=filename)
-    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=output,
-      plotname=plotname, stochasticforcing=true)
+  if stochastic
+    prob, diags, nt = getstochasticforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ,
+       nμ=nμ, dt=dt, fi=fi, ki=ki, tf=tf, stepper=stepper)
   else
-    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, 
-      plotname=plotname, stochasticforcing=true)
+    prob, diags, nt = getsteadyforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ, nμ=nμ,
+      dt=dt, fi=fi, ki=ki, θ=θ, tf=tf, stepper=stepper)
   end
 
-  nothing
-end
-
-
-function runsteadyforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, μ=1e-1, nμ=-1, 
-  dt=1e-2, fi=1.0, ki=8, θ=π/4, tf=10, ns=1, withplot=false, withoutput=false,
-  stepper="RK4", filename="default")
-
-  prob, diags, nt = getsteadyforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ, nμ=nμ,
-    dt=dt, fi=fi, ki=ki, θ=θ, tf=tf, stepper=stepper)
-
   if withoutput
     output = getbasicoutput(prob; filename=filename)
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=output,
-      plotname=plotname)
+      plotname=plotname, stochasticforcing=stochastic)
   else
     runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, 
-      plotname=plotname)
+      plotname=plotname, stochasticforcing=stochastic)
   end
 
   nothing
@@ -66,7 +53,7 @@ function getstochasticforcingproblem(; n=128, L=2π, ν=1e-3, nν=1,
   nt = round(Int, tf/dt)
   prob = TwoDTurb.ForcedProblem(nx=n, Lx=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
     calcF=calcF!, stepper=stepper)
-  diags = getdiags(prob, nt)
+  diags = getdiags(prob, nt; stochasticforcing=true)
 
   prob, diags, nt
 end
@@ -103,17 +90,29 @@ function getsteadyforcingproblem(; n=128, L=2π, ν=2e-3, nν=1, μ=1e-1, nμ=-1
 end
 
 
-
 function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
                         stochasticforcing=false, plotname=nothing)
+
+  nint = round(Int, nt/ns)
   for i = 1:ns
     tic()
-    stepforward!(prob, diags, round(Int, nt/ns))
+    stepforward!(prob, diags, nint)
     tc = toq()
     TwoDTurb.updatevars!(prob)  
+
     res = getresidual(prob, diags) # residual = dEdt - I + D + R
-    @printf("step: %04d, t: %.1f, cfl: %.3f, time: %.2f s, mean(res) = %.3e\n", 
-      prob.step, prob.t, cfl(prob), tc, mean(res))
+
+    # Some analysis
+    E, Z, D, I, R = diags
+
+    iavg = (length(res)-nint+1):length(res)
+
+    avgI = mean(I[iavg])
+    norm = maximum([ mean(abs.(D[iavg])), mean(abs.(R[iavg])) ])
+    resnorm = mean(res[iavg])/norm
+
+    @printf("step: %04d, t: %.1f, cfl: %.3f, tc: %.2f s, <res>: %.3e, <I>: %.2f\n", 
+      prob.step, prob.t, cfl(prob), tc, resnorm, avgI)
 
     if withplot     
       makeplot(prob, diags; stochasticforcing=stochasticforcing)

@@ -21,12 +21,18 @@ function getresidual(prob, diags; kwargs...)
 end
 
 
-function getdiags(prob, nt)
+function getdiags(prob, nt; stochasticforcing=false)
   E = Diagnostic(energy,      prob, nsteps=nt)
   Z = Diagnostic(enstrophy,   prob, nsteps=nt)
   D = Diagnostic(dissipation, prob, nsteps=nt)
   R = Diagnostic(drag,        prob, nsteps=nt)
-  I = Diagnostic(injection,   prob, nsteps=nt)
+
+  if stochasticforcing
+    stochasticinjection(prob) = 0.5*injection(prob)
+    I = Diagnostic(stochasticinjection, prob, nsteps=nt)
+  else
+    I = Diagnostic(injection, prob, nsteps=nt)
+  end
   diags = [E, Z, D, I, R]
 
   diags
@@ -34,6 +40,9 @@ end
 
 
 function getbasicoutput(prob; filename="default")
+  filedir = joinpath(".", "data")
+  if !isdir(filedir); mkdir(filedir); end
+  filename = joinpath(filedir, filename)
   getsol(prob) = deepcopy(prob.state.sol)
   Output(prob, filename, (:sol, getsol))
 end
