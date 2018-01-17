@@ -31,19 +31,19 @@ function getresidual(prob, E, I, D, R, ψ, F; ii0=1, iif=E.count,
 
   # Forward difference: dEdt calculated at ii=ii0:(iif-1) 
   ii = ii0:(iif-1) 
-  iifwd = (ii0+1):iif
+  ii₊₁ = (ii0+1):iif
 
   # to calculate dEdt for fixed dt
-  dEdt = ( E[iifwd] - E[ii] ) / prob.ts.dt
+  dEdt = ( E[ii₊₁] - E[ii] ) / prob.ts.dt
 
   if stochasticforcing
-    injkernel = 0.5*ψ[ii]*conj(F[ii]+F[iifwd])
-    inj = -1/(g.Lx*g.Ly)*FourierFlows(injkernel)
+    workkernel = 0.5*ψ[ii]*conj(F[ii]+F[ii₊₁])
+    work = -1/(g.Lx*g.Ly)*FourierFlows(workkernel)
   else
-    inj = I[ii]
+    work = I[ii]
   end
   
-  dEdt - inj + D[ii] + R[ii]
+  dEdt - work + D[ii] + R[ii]
 end
 
 function getresidual(prob, diags; kwargs...)
