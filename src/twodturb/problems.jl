@@ -1,17 +1,21 @@
-export getsteadyforcingproblem, runwithmessage, getstochasticforcingproblem,
+export makesteadyforcingproblem, runwithmessage, makestochasticforcingproblem,
        runforcingproblem
 
+"""
+    runforcingproblem(; parameters...)
 
+Create and run a two-dimensional turbulence problem with the "Chan forcing".
+"""
 function runforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, 
   μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, θ=π/4, 
   withplot=false, withoutput=false, stepper="RK4", plotname=nothing,
   filename="default", stochastic=false)
 
   if stochastic
-    prob, diags, nt = getstochasticforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ,
+    prob, diags, nt = makestochasticforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ,
        nμ=nμ, dt=dt, fi=fi, ki=ki, tf=tf, stepper=stepper)
   else
-    prob, diags, nt = getsteadyforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ, nμ=nμ,
+    prob, diags, nt = makesteadyforcingproblem(n=n, L=L, ν=ν, nν=nν, μ=μ, nμ=nμ,
       dt=dt, fi=fi, ki=ki, θ=θ, tf=tf, stepper=stepper)
   end
 
@@ -28,7 +32,7 @@ function runforcingproblem(; n=128, L=2π, ν=4e-3, nν=1,
 end
 
 
-function getstochasticforcingproblem(; n=128, L=2π, ν=1e-3, nν=1, 
+function makestochasticforcingproblem(; n=128, L=2π, ν=1e-3, nν=1, 
   μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4")
 
   amplitude = fi*ki/sqrt(dt) * n^2/4
@@ -60,18 +64,19 @@ end
 
 
 function getchan2012prob(n, ν, ki; dt=1e-2, tf=1000)
-  getstochasticforcingproblem(n=n, ν=ν, nν=1, μ=0, dt=dt, fi=1, ki=ki, tf=tf)
+  makestochasticforcingproblem(n=n, ν=ν, nν=1, μ=0, dt=dt, fi=1, ki=ki, tf=tf)
 end 
 
 
-function getsteadyforcingproblem(; n=128, L=2π, ν=2e-3, nν=1, μ=1e-1, nμ=-1, 
+function makesteadyforcingproblem(; n=128, L=2π, ν=2e-3, nν=1, μ=1e-1, nμ=-1, 
   dt=1e-2, fi=1.0, ki=8, θ=π/4, tf=10, stepper="RK4")
   
   i₁ = round(Int, abs(ki*cos(θ))) + 1
   j₁ = round(Int, abs(ki*sin(θ))) + 1  # j₁ >= 1
-  j₂ = n + 2 - j₁                       # e.g. j₁ = 1 => j₂ = nl+1
-
+  j₂ = n + 2 - j₁                      # e.g. j₁ = 1 => j₂ = nl+1
   amplitude = fi*ki * n^2/4
+
+  # F = fi*ki*cos(i)*cos(j) (essentially)
   function calcF!(F, sol, t, s, v, p, g)
     if s.step == 1
       F[i₁, j₁] = amplitude
@@ -103,7 +108,7 @@ function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
     res = getresidual(prob, diags) # residual = dEdt - I + D + R
 
     # Some analysis
-    E, Z, D, I, R = diags
+    E, Z, D, I, R, F = diags
 
     iavg = (length(res)-nint+1):length(res)
 
@@ -111,7 +116,8 @@ function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
     norm = maximum([ mean(abs.(D[iavg])), mean(abs.(R[iavg])) ])
     resnorm = mean(res[iavg])/norm
 
-    @printf("step: %04d, t: %.1f, cfl: %.3f, tc: %.2f s, <res>: %.3e, <I>: %.2f\n", 
+    @printf(
+      "step: %04d, t: %.1f, cfl: %.3f, tc: %.2f s, <res>: %.3e, <I>: %.2f\n", 
       prob.step, prob.t, cfl(prob), tc, resnorm, avgI)
 
     if withplot     

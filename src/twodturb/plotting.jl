@@ -5,7 +5,7 @@ export makeplot
 function makeplot(prob, diags; stochasticforcing=false)
 
   TwoDTurb.updatevars!(prob)  
-  E, Z, D, I, R = diags
+  E, Z, D, I, R, F = diags
 
   close("all")
   fig, axs = subplots(ncols=3, nrows=1, figsize=(13, 4))
