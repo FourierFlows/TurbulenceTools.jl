@@ -1,0 +1,134 @@
+using FourierFlows.VerticallyCosineBoussinesq
+
+export makestochasticforcingproblem
+
+
+"""
+    cfl(prob)
+
+Returns the CFL number defined by CFL = max([max(U)*dx/dt max(V)*dy/dt]).
+"""
+function cfl(prob)
+  prob.ts.dt*maximum(
+    [maximum(prob.vars.V)/prob.grid.dx, maximum(prob.vars.U)/prob.grid.dy])
+end
+
+
+function makestochasticforcingproblem(; N=128, L=2π, nu0=1e-6, nnu0=1,
+  nu1=1e-6, nnu1=1, mu0=1e-6, nmu0=1, mu1=1e-6, nmu1=1, f=1.0, N=1.0, m=4.0, 
+  ε=0.1, nkw=16, fi=1.0, ki=8, tf=1, stepper="RK4")
+
+  kii = ki*L/2π
+  amplitude = fi*ki/sqrt(dt) * n^2/4
+  function calcF!(F, sol, t, s, v, p, g)
+
+    if t == s.t # not a substep
+      F .= 0.0
+      # Vorticity forcing
+      θk = 2π*rand() 
+      phase = 2π*im*rand()
+      i₁ = round(Int, abs(kii*cos(θk))) + 1
+      j₁ = round(Int, abs(kii*sin(θk))) + 1  # j₁ >= 1
+      j₂ = g.nl + 2 - j₁                    # e.g. j₁ = 1 => j₂ = nl+1
+      if j₁ != 1  # apply forcing to l = (+/-)l★ mode
+        F[i₁, j₁, 1] = amplitude*exp(phase)
+        F[i₁, j₂, 1] = amplitude*exp(phase)
+      else        # apply forcing to l=0 mode
+        F[i₁, 1, 1] = 2amplitude*exp(phase)
+      end
+    end
+
+    nothing
+  end
+
+  nt = round(Int, tf/dt)
+  prob = Problem(f=f, N=N, m=m, nx=n, Lx=L, nu0=nu0, nnu0=nnu0, nu1=nu1, 
+    nnu1=nnu1, mu0=mu0, nmu0=nmu0, mu1=mu1, nmu1=nmu1, dt=dt, 
+    stepper=stepper, calcF=calcF!)
+    
+  kw = nkw*2π/L
+  set_planewave!(prob, uw, kw)
+  diags = getdiags(prob, nt; stochasticforcing=true)
+
+  prob, diags
+end
+
+function getdiags(prob, nt)
+
+
+function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
+                        stochasticforcing=false, plotname=nothing,
+                        message=nothing)
+
+  nint = round(Int, nt/ns)
+  for i = 1:ns
+    tic()
+    stepforward!(prob, diags, nint)
+    tc = toq()
+    updatevars!(prob)  
+
+    @printf(
+      "step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s\n",
+      prob.step, prob.t, cfl(prob), tc)
+
+    if message != nothing; println(message(prob)); end
+
+    if withplot     
+      makeplot(prob, diags; stochasticforcing=stochasticforcing)
+      if plotname != nothing
+        plotdir = joinpath(".", "plots")
+        fullplotname = joinpath(plotdir, 
+          @sprintf("%s_%d.png", plotname, prob.step))
+        if !isdir(plotdir); mkdir(plotdir); end
+        savefig(fullplotname, dpi=240)
+      end
+    end
+
+    if output != nothing
+      saveoutput(output)
+    end
+
+  end
+
+  TwoDTurb.updatevars!(prob)
+  nothing
+end
+
+
+function makeplot!(axs, prob, diags)
+  sca(axs[1]); cla()
+  pcolormesh(prob.grid.X, prob.grid.Y, prob.vars.Z)
+
+  sca(axs[2]); cla()
+  pcolormesh(prob.grid.X, prob.grid.Y, real.(prob.vars.u))
+  makesquare!(axs[1:2])
+
+  t, dEdt, E, E0, E1, D0, D1, R0, R1 = primp(diags)
+  sca(axs[3]); cla()
+  plot(t, E,    label=L"\mathcal{E}") 
+  plot(t, E0,   label=L"E") 
+  plot(t, E1,   label=L"e")
+  legend()
+  xlabel(L"t")
+  ylabel("Energy")
+
+  sca(axs[4]); cla()
+  plot(t, dEdt, "k-", label=L"E_t")
+  plot(t, -D0,   label=L"D")
+  plot(t, -D1,   label=L"d")
+  plot(t, -R0,   label=L"R")
+  plot(t, -R1,   label=L"r")
+  plot(t, -D0 - D1 - R0 - R1, "y:", label=L"-D-d-R-r")
+  legend()
+  xlabel(L"t")
+  ylabel("Energy tendency")
+
+  axs[1][:tick_params]( 
+    bottom=false, left=false, labelbottom=false, labelleft=false)
+  axs[2][:tick_params]( 
+    bottom=false, left=false, labelbottom=false, labelleft=false)
+
+  tight_layout()
+  nothing
+end
+

@@ -1,4 +1,4 @@
-import FourierFlows.TwoDTurb: energy, enstrophy, dissipation, injection, drag
+import FourierFlows.TwoDTurb: energy, enstrophy, dissipation, work, drag
 
 export cfl, getresidual, getdiags, getbasicoutput, savediags
 
@@ -14,7 +14,7 @@ end
 
 
 """
-    getresidual(prob, E, I, D, R, F; i0=1)
+    getresidual(prob, E, I, D, R, ψ, F; i0=1)
 
 Returns the residual defined by
 
@@ -35,20 +35,13 @@ function getresidual(prob, E, I, D, R, ψ, F; ii0=1, iif=E.count,
 
   # to calculate dEdt for fixed dt
   dEdt = ( E[ii₊₁] - E[ii] ) / prob.ts.dt
-
-  if stochasticforcing
-    workkernel = 0.5*ψ[ii]*conj(F[ii]+F[ii₊₁])
-    work = -1/(g.Lx*g.Ly)*FourierFlows(workkernel)
-  else
-    work = I[ii]
-  end
   
-  dEdt - work + D[ii] + R[ii]
+  dEdt - I[ii] + D[ii] + R[ii]
 end
 
 function getresidual(prob, diags; kwargs...)
   E, Z, D, I, R, F, ψ = diags[1:7]
-  getresidual(prob, E, I, D, R, F; kwargs...)
+  getresidual(prob, E, I, D, R, ψ, F; kwargs...)
 end
 
 
@@ -60,10 +53,10 @@ function getdiags(prob, nt; stochasticforcing=false)
   E = Diagnostic(energy,      prob, nsteps=nt)
   Z = Diagnostic(enstrophy,   prob, nsteps=nt)
   D = Diagnostic(dissipation, prob, nsteps=nt)
-  I = Diagnostic(injection, prob, nsteps=nt)
+  I = Diagnostic(work,        prob, nsteps=nt)
   R = Diagnostic(drag,        prob, nsteps=nt)
   F = Diagnostic(forcing,     prob, nsteps=nt)
-  ψ = Diagnostic(getpsi,      prob, nsteps=nt)
+  ψ = Diagnostic(getpsih,     prob, nsteps=nt)
 
   [E, Z, D, I, R, F, ψ]
 end
@@ -83,7 +76,7 @@ function savediags(out, diags)
   savediagnostic(E, "energy", out.filename)
   savediagnostic(Z, "enstrophy", out.filename)
   savediagnostic(D, "dissipation", out.filename)
-  savediagnostic(I, "injection", out.filename)
+  savediagnostic(I, "work", out.filename)
   savediagnostic(R, "drag", out.filename)
   savediagnostic(F, "forcing", out.filename)
   savediagnostic(ψ, "psih", out.filename)

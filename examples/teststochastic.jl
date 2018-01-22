@@ -1,9 +1,10 @@
-using TurbulenceTools
+using TurbulenceTools.TwoDTurbTools
 
  n = 256
  ν = 1e-4
 fi = 1.0
  μ = 1e0
+nμ = -1
 tf = 100
 
 # 1/1e-2 = 100...
@@ -19,7 +20,7 @@ for ki = [16, 24]
       Int(fi*10), n, ki, μ, dt)
 
     runforcingproblem(fi=fi, ki=ki, tf=tf, dt=dt, withplot=true, 
-      ns=5, n=n, ν=ν, μ=μ, stepper="FilteredRK4", plotname=plotname,
+      ns=5, n=n, ν=ν, μ=μ, nμ=nμ, stepper="FilteredRK4", plotname=plotname,
       withoutput=true, filename=plotname, stochastic=true)
   end
 end

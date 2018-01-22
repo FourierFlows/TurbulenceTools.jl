@@ -7,7 +7,7 @@ export makesteadyforcingproblem, runwithmessage, makestochasticforcingproblem,
 Create and run a two-dimensional turbulence problem with the "Chan forcing".
 """
 function runforcingproblem(; n=128, L=2π, ν=4e-3, nν=1, 
-  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, θ=π/4, 
+  μ=1e-1, nμ=0, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, θ=π/4, 
   withplot=false, withoutput=false, stepper="RK4", plotname=nothing,
   filename="default", stochastic=false)
 
@@ -28,21 +28,22 @@ function runforcingproblem(; n=128, L=2π, ν=4e-3, nν=1,
       plotname=plotname, stochasticforcing=stochastic)
   end
 
-  nothing
+  prob, diags
 end
 
 
 function makestochasticforcingproblem(; n=128, L=2π, ν=1e-3, nν=1, 
   μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4")
 
+  kii = ki*L/2π
   amplitude = fi*ki/sqrt(dt) * n^2/4
   function calcF!(F, sol, t, s, v, p, g)
     if t == s.t # not a substep
       F .= 0.0
       θk = 2π*rand() 
       phase = 2π*im*rand()
-      i₁ = round(Int, abs(ki*cos(θk))) + 1
-      j₁ = round(Int, abs(ki*sin(θk))) + 1  # j₁ >= 1
+      i₁ = round(Int, abs(kii*cos(θk))) + 1
+      j₁ = round(Int, abs(kii*sin(θk))) + 1  # j₁ >= 1
       j₂ = g.nl + 2 - j₁                    # e.g. j₁ = 1 => j₂ = nl+1
       if j₁ != 1  # apply forcing to l = (+/-)l★ mode
         F[i₁, j₁] = amplitude*exp(phase)
@@ -96,7 +97,8 @@ end
 
 
 function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
-                        stochasticforcing=false, plotname=nothing)
+                        stochasticforcing=false, plotname=nothing,
+                        message=nothing)
 
   nint = round(Int, nt/ns)
   for i = 1:ns
@@ -117,8 +119,10 @@ function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
     resnorm = mean(res[iavg])/norm
 
     @printf(
-      "step: %04d, t: %.1f, cfl: %.3f, tc: %.2f s, <res>: %.3e, <I>: %.2f\n", 
+      "step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s, <res>: %.3e, <I>: %.2f\n", 
       prob.step, prob.t, cfl(prob), tc, resnorm, avgI)
+
+    if message != nothing; println(message(prob)); end
 
     if withplot     
       makeplot(prob, diags; stochasticforcing=stochasticforcing)
@@ -136,5 +140,8 @@ function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
     end
 
   end
+
+  TwoDTurb.updatevars!(prob)
+  nothing
 end
 
