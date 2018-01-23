@@ -1,9 +1,10 @@
 module StochasticForcingProblems
 
-using PyPlot
+using TurbulenceTools, TurbulenceTools.TwoDTurbTools, FourierFlows, 
+      FourierFlows.TwoDTurb, PyPlot
 
 export getresidual, getdiags, savediags,
-       runwithmessage, makeproblem, runproblem, makeplot
+       runproblem, makeproblem, initandrunproblem, makeplot
 
 
 """
@@ -77,7 +78,7 @@ energy.
 """
 function makeplot(prob, diags)
 
-  TwoDTurb.updatevars!(prob)  
+  updatevars!(prob)  
   E, Z, D, I, R, F = diags
 
   close("all")
@@ -123,7 +124,7 @@ end
 
 Create and run a two-dimensional turbulence problem with the "Chan forcing".
 """
-function runproblem(; n=128, L=2π, ν=4e-3, nν=1, 
+function initandrunproblem(; n=128, L=2π, ν=4e-3, nν=1, 
   μ=1e-1, nμ=0, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, θ=π/4, 
   withplot=false, withoutput=false, stepper="RK4", plotname=nothing,
   filename="default")
@@ -133,14 +134,18 @@ function runproblem(; n=128, L=2π, ν=4e-3, nν=1,
   
   if withoutput
     output = getbasicoutput(prob; filename=filename)
-    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, output=output,
+    runproblem(prob, diags, nt; withplot=withplot, ns=ns, output=output,
       plotname=plotname)
   else
-    runwithmessage(prob, diags, nt; withplot=withplot, ns=ns, 
+    runproblem(prob, diags, nt; withplot=withplot, ns=ns, 
       plotname=plotname)
   end
 
-  prob, diags
+  if withoutput
+    return prob, diags, output.filename
+  else
+    return prob, diags
+  end
 end
 
 """
@@ -174,7 +179,7 @@ function makeproblem(; n=128, L=2π, ν=1e-3, nν=1,
   end
 
   nt = round(Int, tf/dt)
-  prob = TwoDTurb.ForcedProblem(nx=n, Lx=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
+  prob = Problem(nx=n, Lx=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
     calcF=calcF!, stepper=stepper)
   diags = getdiags(prob, nt)
 
@@ -182,7 +187,7 @@ function makeproblem(; n=128, L=2π, ν=1e-3, nν=1,
 end
 
 """
-    runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
+    runproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
                    plotname=nothing, message=nothing)
 
 Run the problem "prob" with useful messages, making plots if withplot 
@@ -191,7 +196,7 @@ message can be specified with the "message" keyword argument, where
 message(prob) is a function that returns a message string. The string
 plotname should be specified without the ".png" suffix.
 """
-function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
+function runproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
                         plotname=nothing, message=nothing)
                         
   nint = round(Int, nt/ns)
@@ -199,7 +204,7 @@ function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
     tic()
     stepforward!(prob, diags, nint)
     tc = toq()
-    TwoDTurb.updatevars!(prob)  
+    updatevars!(prob)  
 
     res = getresidual(prob, diags) # residual = dEdt - I + D + R
 
@@ -234,7 +239,7 @@ function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
     end
   end
 
-  TwoDTurb.updatevars!(prob)
+  updatevars!(prob)
   nothing
 end
 

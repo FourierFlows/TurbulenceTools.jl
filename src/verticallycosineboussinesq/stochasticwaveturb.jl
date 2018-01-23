@@ -1,7 +1,8 @@
 module StochasticWaveTurbProblems
 
-export startfromfile, makestochasticforcingproblem, makeplot!
+using PyPlot
 
+export startfromfile, runproblem, makeproblem, makeplot!
 
 """
     startfromfile(filename; kwargs...)
@@ -37,7 +38,7 @@ function startfromfile(filename; stepper="RK4", f=1.0, N=1.0, m=1.0,
   q0 = irfft(q0, nx)
 
   prob, diags, nt = makeproblem(; n=nx, L=Lx, nu0=nu0, nnu0=nnu0, 
-    nu1=nu1, nnu1=nnu1, mu0=mu0, nmu0=nmu0, mu1=mu1, nmu1=nmu1
+    nu1=nu1, nnu1=nnu1, mu0=mu0, nmu0=nmu0, mu1=mu1, nmu1=nmu1,
     f=f, N=N, m=m, ε=ε, nkw=nkw, fi=fi, ki=ki, tf=tf, stepper=stepper,
     q0=q0)
 
@@ -136,6 +137,7 @@ function makeproblem(; n=128, L=2π, nu0=1e-6, nnu0=1,
   σ = f*sqrt(1 + (N*kw/m)^2) # wave frequency
   uw = ε*σ/ki # wave velocity defined in terms of wave nonlinearity
     
+  # For now, initial wave condition is a plane wave.
   set_planewave!(prob, uw, kw)
 
   if q0 != nothing; set_Z!(prob, q0); end

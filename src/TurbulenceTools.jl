@@ -19,6 +19,8 @@ Module structure:
 module TurbulenceTools
 using FourierFlows, PyPlot
 
+export makesquare!, ticksoff!, getbasicoutput
+
 # Stuff to help with plotting
 makesquare!(ax) = ax[:set_aspect](1, adjustable="box")
 makesquare!(axs::AbstractArray) = for ax in axs; makesquare!(ax); end

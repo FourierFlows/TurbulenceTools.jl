@@ -1,10 +1,11 @@
-using TurbulenceTools.TwoDTurbTools, JLD2
+using TurbulenceTools.TwoDTurbTools.StochasticForcingProblems
+using JLD2
 
  L = 1600e3
  n = 256
 
 Ro = 0.1      # Rossby number
-Rμ = 0.0001    # Ratio of drag and inertial time-scale
+Rμ = 1e-4     # Ratio of drag and inertial time-scale
 Rν = 1.0      # Ratio of viscous and inertial time-scale
  f = 1e-4     # Planetary vorticity
 
@@ -19,24 +20,21 @@ ki = 16*2π/L
 fi = f*Ro/ki * sqrt(μ) # P = fi²
 
 dt = tq/5
-tf = 10*tμ
+tf = 10tμ
 nt = round(Int, tf/dt)
 ns = 10
 
 @printf("Running stochastic forced turbulence for %d steps...\n", nt)
 
-# 1/1e-2 = 100...
-# 1/5e-3 = 200...
-# 1/2e-3 = 500...
-
-plotname = @sprintf("equilq_Ro%d_Rmu%d_ki%d", 10Ro, 10Rμ, ki*L/2π)
+plotname = @sprintf("equilq_n%d_Ro%.1e_Rmu%.1e_ki%d", n, Ro, Rμ, ki*L/2π)
   
-prob, diags = runforcingproblem(L=L, n=n, fi=fi, ki=ki, tf=tf, dt=dt, 
+prob, diags, filename = initandrunproblem(L=L, n=n, fi=fi, ki=ki, tf=tf, dt=dt, 
   withplot=true, ns=ns, ν=ν, μ=μ, stepper="FilteredRK4", plotname=plotname,
-  withoutput=true, filename=plotname, stochastic=true)
+  withoutput=true, filename=plotname)
 
-@printf "\n\nDone! max(Ro) = %.4f" maximum(abs.(prob.vars.q))/f
+@printf "\n\nDone! max(Ro) = %.4f" maximum(abs.(prob.vars.q/f))
 
-forcingfilename = joinpath("data", @sprintf("%s_forcingparams.jld2", plotname))
-rm(forcingfilename; force=true)
-@save forcingfilename ki fi
+jldopen(filename, "r+") do file
+  file["forcingparams/fi"] = fi
+  file["forcingparams/ki"] = ki
+end
