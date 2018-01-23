@@ -1,4 +1,6 @@
 using FourierFlows.VerticallyCosineBoussinesq
+import FourierFlows.VerticallyFourierBoussinesq: totalenergy, mode0energy,
+  mode1energy, mode0dissipation, mode1dissipation, mode0drag, mode1drag
 
 export makestochasticforcingproblem
 
@@ -14,9 +16,36 @@ function cfl(prob)
 end
 
 
-function makestochasticforcingproblem(; N=128, L=2π, nu0=1e-6, nnu0=1,
+function startforcingproblemfromfile(filename; stepper="RK4", f=1.0, N=1.0, m=1.0,
+                               nu1=nothing, nnu1=nothing, mu1=nothing, 
+                               nmu1=nothing, ε=0.1, nkw=16, tf=1)
+
+  jldopen(filename, "r") do file
+      fi = file["forcingparams/fi"]
+      ki = file["forcingparams/ki"]
+     nu0 = file["params/ν"]
+    nnu0 = file["params/nν"]
+     mu0 = file["params/μ"]
+    nmu0 = file["params/nμ"]
+      nx = file["grid/nx"]
+      Lx = file["grid/Lx"]
+  end
+
+  if  nu1 == nothing;  nu1=nu0;  end
+  if  mu1 == nothing;  mu1=mu0;  end
+  if nnu1 == nothing; nnu1=nnu0; end
+  if nmu1 == nothing; nmu1=nmu0; end
+
+  makestochasticforcingproblem(; n=nx, L=Lx, nu0=nu0, nnu0=nnu0, 
+    nu1=nu1, nnu1=nnu1, mu0=mu0, nmu0=nmu0, mu1=mu1, nmu1=nmu1
+    f=f, N=N, m=m, ε=ε, nkw=nkw, fi=fi, ki=ki, tf=tf, stepper=stepper,
+    icfile=filename)
+end
+    
+
+function makestochasticforcingproblem(; n=128, L=2π, nu0=1e-6, nnu0=1,
   nu1=1e-6, nnu1=1, mu0=1e-6, nmu0=1, mu1=1e-6, nmu1=1, f=1.0, N=1.0, m=4.0, 
-  ε=0.1, nkw=16, fi=1.0, ki=8, tf=1, stepper="RK4")
+  ε=0.1, nkw=16, fi=1.0, ki=8, tf=1, stepper="RK4", icfile=nothing)
 
   kii = ki*L/2π
   amplitude = fi*ki/sqrt(dt) * n^2/4
@@ -45,15 +74,39 @@ function makestochasticforcingproblem(; N=128, L=2π, nu0=1e-6, nnu0=1,
   prob = Problem(f=f, N=N, m=m, nx=n, Lx=L, nu0=nu0, nnu0=nnu0, nu1=nu1, 
     nnu1=nnu1, mu0=mu0, nmu0=nmu0, mu1=mu1, nmu1=nmu1, dt=dt, 
     stepper=stepper, calcF=calcF!)
-    
+
+  # wave nonlinearity is measured by ε = uw*ki/σ
   kw = nkw*2π/L
+  σ = f*sqrt(1 + (N*kw/m)^2) # wave frequency
+  uw = ε*σ/ki # wave velocity defined in terms of wave nonlinearity
+    
   set_planewave!(prob, uw, kw)
-  diags = getdiags(prob, nt; stochasticforcing=true)
+
+  if icfile != nothing
+    jldopen(icfile, "r") do file
+      laststep = keys(file["timeseries/sol"])[end]
+      qh = file["timeseries/sol/$laststep"]
+    end
+    set_Z!(prob, irfft(qh, n))
+  end
+
+  diags = getdiags(prob, nt)
 
   prob, diags
 end
 
+
 function getdiags(prob, nt)
+  E = Diagnostic(totalenergy, prob, nsteps=nt)
+  E0 = Diagnostic(mode0energy, prob, nsteps=nt)
+  E1 = Diagnostic(mode1energy, prob, nsteps=nt)
+  #D0 = Diagnostic(mode0dissipation, prob, nsteps=nt)
+  #D1 = Diagnostic(mode1dissipation, prob, nsteps=nt)
+  #R0 = Diagnostic(mode0drag, prob, nsteps=nt)
+  #R1 = Diagnostic(mode1drag, prob, nsteps=nt)
+  [E, E0, E1]
+end
+
 
 
 function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,

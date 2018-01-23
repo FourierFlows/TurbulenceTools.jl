@@ -12,7 +12,7 @@ tf = 10
 # 1/5e-3 = 200...
 # 1/2e-3 = 500...
 
-for dt = 2e-3
+for dt = 1e-3
   @printf("Running with dt=%3.0e, fi=%.2f, ki=%d, and μ=%4.0e...\n", 
     dt, fi, ki, μ)
 
