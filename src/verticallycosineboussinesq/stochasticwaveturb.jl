@@ -1,25 +1,20 @@
-using FourierFlows.VerticallyCosineBoussinesq
-import FourierFlows.VerticallyFourierBoussinesq: totalenergy, mode0energy,
-  mode1energy, mode0dissipation, mode1dissipation, mode0drag, mode1drag
+module StochasticWaveTurbProblems
 
-export makestochasticforcingproblem
+export startfromfile, makestochasticforcingproblem, makeplot!
 
 
 """
-    cfl(prob)
+    startfromfile(filename; kwargs...)
 
-Returns the CFL number defined by CFL = max([max(U)*dx/dt max(V)*dy/dt]).
+Start a stochastically-forced wave-turbulence interaction problem from the
+vorticity field stored in the file with path filename.
 """
-function cfl(prob)
-  prob.ts.dt*maximum(
-    [maximum(prob.vars.V)/prob.grid.dx, maximum(prob.vars.U)/prob.grid.dy])
-end
+function startfromfile(filename; stepper="RK4", f=1.0, N=1.0, m=1.0,
+                       nu1=nothing, nnu1=nothing, mu1=nothing, nmu1=nothing, 
+                       ε=0.1, nkw=16, tf=1, ns=1, withplot=false, 
+                       plotname=nothing, message=nothing)
 
-
-function startforcingproblemfromfile(filename; stepper="RK4", f=1.0, N=1.0, m=1.0,
-                               nu1=nothing, nnu1=nothing, mu1=nothing, 
-                               nmu1=nothing, ε=0.1, nkw=16, tf=1)
-
+  # Extract two-dimensional turbulence parameters
   jldopen(filename, "r") do file
       fi = file["forcingparams/fi"]
       ki = file["forcingparams/ki"]
@@ -29,23 +24,84 @@ function startforcingproblemfromfile(filename; stepper="RK4", f=1.0, N=1.0, m=1.
     nmu0 = file["params/nμ"]
       nx = file["grid/nx"]
       Lx = file["grid/Lx"]
+
+    laststep = keys(file["timeseries/sol"])[end]
+    qh = file["timeseries/sol/$laststep"]
   end
 
   if  nu1 == nothing;  nu1=nu0;  end
   if  mu1 == nothing;  mu1=mu0;  end
   if nnu1 == nothing; nnu1=nnu0; end
   if nmu1 == nothing; nmu1=nmu0; end
+  
+  q0 = irfft(q0, nx)
 
-  makestochasticforcingproblem(; n=nx, L=Lx, nu0=nu0, nnu0=nnu0, 
+  prob, diags, nt = makeproblem(; n=nx, L=Lx, nu0=nu0, nnu0=nnu0, 
     nu1=nu1, nnu1=nnu1, mu0=mu0, nmu0=nmu0, mu1=mu1, nmu1=nmu1
     f=f, N=N, m=m, ε=ε, nkw=nkw, fi=fi, ki=ki, tf=tf, stepper=stepper,
-    icfile=filename)
-end
-    
+    q0=q0)
 
-function makestochasticforcingproblem(; n=128, L=2π, nu0=1e-6, nnu0=1,
+  fileprefix = filename[1:end-5]
+  newfilename = "$fileprefix-waveturb.jld2"
+  output = getbasicouput(prob; filename=newfilename)
+
+  runproblem(prob, diags, nt; ns=ns, withplot=withplot, output=output,
+    plotname=plotname, message=message)
+
+  prob, diags
+end
+
+"""
+    runproblem(prob, diags, nt; kwargs...)
+
+Run a stochastically forced wave-turbulence problem. 
+"""
+function runproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
+                    plotname=nothing, message=nothing)
+
+  if withplot; fig, axs = subplots(ncols=3, figsize=(12, 4)); end
+
+  nint = round(Int, nt/ns)
+  for i = 1:ns
+    tic()
+    stepforward!(prob, diags, nint)
+    tc = toq()
+    updatevars!(prob)  
+    
+    @printf(
+      "step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s, <res>: %.3e, <I>: %.2f\n", 
+      prob.step, prob.t, cfl(prob), tc, resnorm, avgI)
+
+    if message != nothing; println(message(prob)); end
+
+    if withplot     
+      makeplot!(axs, prob, diags)
+      if plotname != nothing
+        plotdir = "plots"
+        fullplotname = joinpath(plotdir,
+          @sprintf("%s_%d.png", plotname, prob.step))
+        if !isdir(plotdir); mkdir(plotdir); end
+        savefig(fullplotname, dpi=240)
+      end
+    end
+
+    if output != nothing; saveoutput(output); end
+  end
+
+  updatevars!(prob)
+  nothing
+end
+
+    
+"""
+    makeproblem(; kwargs...)
+
+Returns a Problem, vector of Diagnostics, and number of timesteps for an
+initiated stochastically-forced wave-turbulence interaction problem.
+"""
+function makeproblem(; n=128, L=2π, nu0=1e-6, nnu0=1,
   nu1=1e-6, nnu1=1, mu0=1e-6, nmu0=1, mu1=1e-6, nmu1=1, f=1.0, N=1.0, m=4.0, 
-  ε=0.1, nkw=16, fi=1.0, ki=8, tf=1, stepper="RK4", icfile=nothing)
+  ε=0.1, nkw=16, fi=1.0, ki=8, tf=1, stepper="RK4", q0=nothing)
 
   kii = ki*L/2π
   amplitude = fi*ki/sqrt(dt) * n^2/4
@@ -82,20 +138,21 @@ function makestochasticforcingproblem(; n=128, L=2π, nu0=1e-6, nnu0=1,
     
   set_planewave!(prob, uw, kw)
 
-  if icfile != nothing
-    jldopen(icfile, "r") do file
-      laststep = keys(file["timeseries/sol"])[end]
-      qh = file["timeseries/sol/$laststep"]
-    end
-    set_Z!(prob, irfft(qh, n))
-  end
+  if q0 != nothing; set_Z!(prob, q0); end
 
   diags = getdiags(prob, nt)
 
-  prob, diags
+  prob, diags, nt
 end
 
 
+"""
+    getdiags(prob, nt)
+
+Returns a vector of diagnostics for a stochastically-forced wave-turbulence
+interaction problem in the rigid lid Boussinesq system truncated to two 
+vertical modes with constant stratification and rotation.
+"""
 function getdiags(prob, nt)
   E = Diagnostic(totalenergy, prob, nsteps=nt)
   E0 = Diagnostic(mode0energy, prob, nsteps=nt)
@@ -107,47 +164,11 @@ function getdiags(prob, nt)
   [E, E0, E1]
 end
 
+"""
+    makeplot!(axs, prob, diags)
 
-
-function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
-                        stochasticforcing=false, plotname=nothing,
-                        message=nothing)
-
-  nint = round(Int, nt/ns)
-  for i = 1:ns
-    tic()
-    stepforward!(prob, diags, nint)
-    tc = toq()
-    updatevars!(prob)  
-
-    @printf(
-      "step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s\n",
-      prob.step, prob.t, cfl(prob), tc)
-
-    if message != nothing; println(message(prob)); end
-
-    if withplot     
-      makeplot(prob, diags; stochasticforcing=stochasticforcing)
-      if plotname != nothing
-        plotdir = joinpath(".", "plots")
-        fullplotname = joinpath(plotdir, 
-          @sprintf("%s_%d.png", plotname, prob.step))
-        if !isdir(plotdir); mkdir(plotdir); end
-        savefig(fullplotname, dpi=240)
-      end
-    end
-
-    if output != nothing
-      saveoutput(output)
-    end
-
-  end
-
-  TwoDTurb.updatevars!(prob)
-  nothing
-end
-
-
+Makes a plot of stochastically-forced waves and turbulence.
+"""
 function makeplot!(axs, prob, diags)
   sca(axs[1]); cla()
   pcolormesh(prob.grid.X, prob.grid.Y, prob.vars.Z)
@@ -156,7 +177,6 @@ function makeplot!(axs, prob, diags)
   pcolormesh(prob.grid.X, prob.grid.Y, real.(prob.vars.u))
   makesquare!(axs[1:2])
 
-  t, dEdt, E, E0, E1, D0, D1, R0, R1 = primp(diags)
   sca(axs[3]); cla()
   plot(t, E,    label=L"\mathcal{E}") 
   plot(t, E0,   label=L"E") 
@@ -164,17 +184,6 @@ function makeplot!(axs, prob, diags)
   legend()
   xlabel(L"t")
   ylabel("Energy")
-
-  sca(axs[4]); cla()
-  plot(t, dEdt, "k-", label=L"E_t")
-  plot(t, -D0,   label=L"D")
-  plot(t, -D1,   label=L"d")
-  plot(t, -R0,   label=L"R")
-  plot(t, -R1,   label=L"r")
-  plot(t, -D0 - D1 - R0 - R1, "y:", label=L"-D-d-R-r")
-  legend()
-  xlabel(L"t")
-  ylabel("Energy tendency")
 
   axs[1][:tick_params]( 
     bottom=false, left=false, labelbottom=false, labelleft=false)
@@ -185,3 +194,5 @@ function makeplot!(axs, prob, diags)
   nothing
 end
 
+
+end # module

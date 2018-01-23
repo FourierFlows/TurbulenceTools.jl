@@ -1,5 +1,54 @@
-export makesteadyforcingproblem, runwithmessage, makestochasticforcingproblem,
-       runforcingproblem
+module SteadyForcingProblems
+
+using PyPlot
+
+export getresidual, getdiags, savediags,
+       runwithmessage, makeproblem, runproblem, makeplot
+
+function makeplot(prob, diags)
+
+  TwoDTurb.updatevars!(prob)  
+  E, Z, D, I, R, F = diags
+
+  close("all")
+  fig, axs = subplots(ncols=3, nrows=1, figsize=(13, 4))
+
+  sca(axs[1]); cla()
+  pcolormesh(prob.grid.X, prob.grid.Y, prob.vars.q)
+  xlabel(L"x")
+  ylabel(L"y")
+
+  sca(axs[2]); cla()
+
+  i₀ = 1
+  dEdt = (E[(i₀+1):E.count] - E[i₀:E.count-1])/prob.ts.dt
+  ii = (i₀+1):E.count
+
+  # dEdt = I - D - R?
+  dEdt₁ = I[ii] - D[ii] - R[ii]
+  residual = dEdt - dEdt₁
+
+  plot(E.time[ii], -D[ii], label="dissipation (\$D\$)")
+  plot(E.time[ii], -R[ii], label="drag (\$R\$)")
+  plot(E.time[ii], residual, "c-", label="residual")
+  plot(E.time[ii], I[ii], label="injection (\$I\$)")
+  plot(E.time[ii], dEdt, "k:", label=L"E_t")
+  plot(E.time[ii], dEdt₁, label=L"I-D-R")
+  
+  ylabel("Energy sources and sinks")
+  xlabel(L"t")
+  legend(fontsize=10, loc="lower right")
+
+  sca(axs[3]); cla()
+  plot(E.time[ii], E[ii])
+  xlabel(L"t")
+  ylabel(L"E")
+
+  tight_layout()
+  pause(0.1)
+
+  nothing
+end
 
 """
     runforcingproblem(; parameters...)
@@ -145,3 +194,64 @@ function runwithmessage(prob, diags, nt; ns=1, withplot=false, output=nothing,
   nothing
 end
 
+
+"""
+    getresidual(prob, E, I, D, R, ψ, F; i0=1)
+
+Returns the residual defined by
+
+               dE
+  residual  =  --  -  I  +  D  + R, 
+               dt
+
+where I = -<ψF>, D = ν<ψΔⁿζ>, and R = μ<ψΔⁿ¹ζ>, with n and n1 the order of 
+hyper- and hypo-dissipation operators, respectively. For the stochastic case,
+care is needed to calculate the dissipation correctly.
+"""
+function getresidual(prob, E, I, D, R, ψ, F; ii0=1, iif=E.count, 
+  stochasticforcing=false)
+
+  # Forward difference: dEdt calculated at ii=ii0:(iif-1) 
+  ii = ii0:(iif-1) 
+  ii₊₁ = (ii0+1):iif
+
+  # to calculate dEdt for fixed dt
+  dEdt = ( E[ii₊₁] - E[ii] ) / prob.ts.dt
+  dEdt - I[ii] + D[ii] + R[ii]
+end
+
+function getresidual(prob, diags; kwargs...)
+  E, Z, D, I, R, F, ψ = diags[1:7]
+  getresidual(prob, E, I, D, R, ψ, F; kwargs...)
+end
+
+
+function getdiags(prob, nt; stochasticforcing=false)
+  forcing(prob) = deepcopy(prob.vars.F)
+
+  getpsih(prob) = -prob.grid.invKKrsq.*prob.state.sol
+
+  E = Diagnostic(energy,      prob, nsteps=nt)
+  Z = Diagnostic(enstrophy,   prob, nsteps=nt)
+  D = Diagnostic(dissipation, prob, nsteps=nt)
+  I = Diagnostic(work,        prob, nsteps=nt)
+  R = Diagnostic(drag,        prob, nsteps=nt)
+  F = Diagnostic(forcing,     prob, nsteps=nt)
+  ψ = Diagnostic(getpsih,     prob, nsteps=nt)
+
+  [E, Z, D, I, R, F, ψ]
+end
+
+function savediags(out, diags)
+  E, Z, D, I, R, F, ψ = diags[1:7]
+  savediagnostic(E, "energy", out.filename)
+  savediagnostic(Z, "enstrophy", out.filename)
+  savediagnostic(D, "dissipation", out.filename)
+  savediagnostic(I, "work", out.filename)
+  savediagnostic(R, "drag", out.filename)
+  savediagnostic(F, "forcing", out.filename)
+  savediagnostic(ψ, "psih", out.filename)
+  nothing
+end
+
+end # module
