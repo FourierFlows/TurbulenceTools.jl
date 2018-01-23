@@ -32,7 +32,7 @@ prob, diags, filename = initandrunproblem(L=L, n=n, fi=fi, ki=ki, tf=tf, dt=dt,
   withplot=true, ns=ns, ν=ν, μ=μ, stepper="FilteredRK4", plotname=plotname,
   withoutput=true, filename=plotname)
 
-@printf "\n\nDone! max(Ro) = %.4f" maximum(abs.(prob.vars.q/f))
+@printf "\n\nDone! max(Ro) = %.4f\n" maximum(abs.(prob.vars.q/f))
 
 jldopen(filename, "r+") do file
   file["forcingparams/fi"] = fi

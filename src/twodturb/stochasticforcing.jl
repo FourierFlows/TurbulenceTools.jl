@@ -179,8 +179,8 @@ function makeproblem(; n=128, L=2π, ν=1e-3, nν=1,
   end
 
   nt = round(Int, tf/dt)
-  prob = Problem(nx=n, Lx=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
-    calcF=calcF!, stepper=stepper)
+  prob = TwoDTurb.Problem(nx=n, Lx=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
+                          calcF=calcF!, stepper=stepper)
   diags = getdiags(prob, nt)
 
   prob, diags, nt
@@ -193,8 +193,8 @@ end
 Run the problem "prob" with useful messages, making plots if withplot 
 and saving data if output is not nothing ns times. An optional additional 
 message can be specified with the "message" keyword argument, where 
-message(prob) is a function that returns a message string. The string
-plotname should be specified without the ".png" suffix.
+message(prob) is a function that returns a string. The string
+"plotname" should be specified without the ".png" suffix.
 """
 function runproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
                         plotname=nothing, message=nothing)

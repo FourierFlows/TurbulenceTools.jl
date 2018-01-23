@@ -1,50 +1,56 @@
 module StochasticWaveTurbProblems
 
-using PyPlot
+using FourierFlows, FourierFlows.VerticallyCosineBoussinesq, PyPlot, JLD2,
+      TurbulenceTools, TurbulenceTools.VerticallyCosineTools
 
 export startfromfile, runproblem, makeproblem, makeplot!
 
 """
-    startfromfile(filename; kwargs...)
+    prob, diags = startfromfile(filename; kwargs...)
 
 Start a stochastically-forced wave-turbulence interaction problem from the
 vorticity field stored in the file with path filename.
 """
 function startfromfile(filename; stepper="RK4", f=1.0, N=1.0, m=1.0,
                        nu1=nothing, nnu1=nothing, mu1=nothing, nmu1=nothing, 
-                       ε=0.1, nkw=16, tf=1, ns=1, withplot=false, 
+                       ε=0.1, nkw=16, tf=1, ns=1, withplot=false, dt=nothing,
                        plotname=nothing, message=nothing)
 
   # Extract two-dimensional turbulence parameters
-  jldopen(filename, "r") do file
-      fi = file["forcingparams/fi"]
-      ki = file["forcingparams/ki"]
-     nu0 = file["params/ν"]
-    nnu0 = file["params/nν"]
-     mu0 = file["params/μ"]
-    nmu0 = file["params/nμ"]
-      nx = file["grid/nx"]
-      Lx = file["grid/Lx"]
-
-    laststep = keys(file["timeseries/sol"])[end]
-    qh = file["timeseries/sol/$laststep"]
+  file = jldopen(filename, "r")
+    fi = file["forcingparams/fi"]
+    ki = file["forcingparams/ki"]
+   nu0 = file["params/ν"]
+  nnu0 = file["params/nν"]
+   mu0 = file["params/μ"]
+  nmu0 = file["params/nμ"]
+    nx = file["grid/nx"]
+    Lx = file["grid/Lx"]
+  
+  if dt == nothing
+    dt = file["timestepper/dt"]
   end
+
+  laststep = keys(file["timeseries/sol"])[end]
+  q0h = file["timeseries/sol/$laststep"]
+  close(file)
 
   if  nu1 == nothing;  nu1=nu0;  end
   if  mu1 == nothing;  mu1=mu0;  end
   if nnu1 == nothing; nnu1=nnu0; end
   if nmu1 == nothing; nmu1=nmu0; end
   
-  q0 = irfft(q0, nx)
+  q0 = irfft(q0h, nx)
 
   prob, diags, nt = makeproblem(; n=nx, L=Lx, nu0=nu0, nnu0=nnu0, 
-    nu1=nu1, nnu1=nnu1, mu0=mu0, nmu0=nmu0, mu1=mu1, nmu1=nmu1,
+    nu1=nu1, nnu1=nnu1, mu0=mu0, nmu0=nmu0, mu1=mu1, nmu1=nmu1, dt=dt,
     f=f, N=N, m=m, ε=ε, nkw=nkw, fi=fi, ki=ki, tf=tf, stepper=stepper,
     q0=q0)
 
   fileprefix = filename[1:end-5]
   newfilename = "$fileprefix-waveturb.jld2"
-  output = getbasicouput(prob; filename=newfilename)
+  rm(newfilename, force=true)
+  output = getbasicoutput(prob; filename=newfilename, filedir=".")
 
   runproblem(prob, diags, nt; ns=ns, withplot=withplot, output=output,
     plotname=plotname, message=message)
@@ -60,7 +66,11 @@ Run a stochastically forced wave-turbulence problem.
 function runproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
                     plotname=nothing, message=nothing)
 
-  if withplot; fig, axs = subplots(ncols=3, figsize=(12, 4)); end
+  if withplot; 
+    fig, axs = subplots(ncols=3, figsize=(12, 4))
+    makeplot!(axs, prob, diags)
+    test = readline()
+  end
 
   nint = round(Int, nt/ns)
   for i = 1:ns
@@ -70,8 +80,8 @@ function runproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
     updatevars!(prob)  
     
     @printf(
-      "step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s, <res>: %.3e, <I>: %.2f\n", 
-      prob.step, prob.t, cfl(prob), tc, resnorm, avgI)
+      "step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s\n",
+      prob.step, prob.t, cfl(prob), tc)
 
     if message != nothing; println(message(prob)); end
 
@@ -86,7 +96,10 @@ function runproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
       end
     end
 
-    if output != nothing; saveoutput(output); end
+    if output != nothing
+      println(prob.step, " ", output.filename)
+      #saveoutput(output)
+    end
   end
 
   updatevars!(prob)
@@ -100,7 +113,7 @@ end
 Returns a Problem, vector of Diagnostics, and number of timesteps for an
 initiated stochastically-forced wave-turbulence interaction problem.
 """
-function makeproblem(; n=128, L=2π, nu0=1e-6, nnu0=1,
+function makeproblem(; n=128, L=2π, nu0=1e-6, nnu0=1, dt=1.0,
   nu1=1e-6, nnu1=1, mu0=1e-6, nmu0=1, mu1=1e-6, nmu1=1, f=1.0, N=1.0, m=4.0, 
   ε=0.1, nkw=16, fi=1.0, ki=8, tf=1, stepper="RK4", q0=nothing)
 
@@ -128,9 +141,9 @@ function makeproblem(; n=128, L=2π, nu0=1e-6, nnu0=1,
   end
 
   nt = round(Int, tf/dt)
-  prob = Problem(f=f, N=N, m=m, nx=n, Lx=L, nu0=nu0, nnu0=nnu0, nu1=nu1, 
-    nnu1=nnu1, mu0=mu0, nmu0=nmu0, mu1=mu1, nmu1=nmu1, dt=dt, 
-    stepper=stepper, calcF=calcF!)
+  prob = VerticallyCosineBoussinesq.Problem(f=f, N=N, m=m, nx=n, Lx=L, nu0=nu0, 
+    nnu0=nnu0, nu1=nu1, nnu1=nnu1, mu0=mu0, nmu0=nmu0, mu1=mu1, nmu1=nmu1, 
+    dt=dt, stepper=stepper, calcF=calcF!)
 
   # wave nonlinearity is measured by ε = uw*ki/σ
   kw = nkw*2π/L
@@ -172,6 +185,9 @@ end
 Makes a plot of stochastically-forced waves and turbulence.
 """
 function makeplot!(axs, prob, diags)
+  E, E0, E1 = diags
+  t = E.time
+
   sca(axs[1]); cla()
   pcolormesh(prob.grid.X, prob.grid.Y, prob.vars.Z)
 
@@ -179,13 +195,15 @@ function makeplot!(axs, prob, diags)
   pcolormesh(prob.grid.X, prob.grid.Y, real.(prob.vars.u))
   makesquare!(axs[1:2])
 
+  #=
   sca(axs[3]); cla()
-  plot(t, E,    label=L"\mathcal{E}") 
-  plot(t, E0,   label=L"E") 
-  plot(t, E1,   label=L"e")
+  plot(t, E,  label=L"\mathcal{E}") 
+  plot(t, E0, label=L"E") 
+  plot(t, E1, label=L"e")
   legend()
   xlabel(L"t")
   ylabel("Energy")
+  =#
 
   axs[1][:tick_params]( 
     bottom=false, left=false, labelbottom=false, labelleft=false)
