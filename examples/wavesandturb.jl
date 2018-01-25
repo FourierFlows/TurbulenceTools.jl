@@ -3,8 +3,8 @@ using PyPlot, FourierFlows, JLD2, TurbulenceTools,
 
 @load "vorticity.jld2" q
 
- L = 1600e3
- n = 256
+L = 1600e3
+n = 256
 
 # Initial turbulence parameters:
 Ro = 0.1      # Rossby number
@@ -66,7 +66,7 @@ q₀ = f*Ro
 U₀ = 0.1
 u₀ = ε*σ*U₀/q₀
 iᵤ = round(Int, k*L/2π) + 1
-aᵤ = u₀*μ
+aᵤ = u₀*μ * n^2/2
 kii = ki*L/2π
 amplitude = fi*ki/sqrt(dt) * n^2/4
 function calcF!(F, sol, t, s, v, p, g)
