@@ -134,12 +134,12 @@ function initandrunproblem(; n=128, L=2π, ν=4e-3, nν=1,
   
   if withoutput
     output = getbasicoutput(prob; filename=filename)
-    runproblem(prob, diags, nt; withplot=withplot, ns=ns, output=output,
-      plotname=plotname)
   else
-    runproblem(prob, diags, nt; withplot=withplot, ns=ns, 
-      plotname=plotname)
+    output = nothing
   end
+
+  runproblem(prob, diags, nt; withplot=withplot, ns=ns, output=output,
+    plotname=plotname)
 
   if withoutput
     return prob, diags, output.filename

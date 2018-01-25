@@ -98,7 +98,7 @@ function runproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
 
     if output != nothing
       println(prob.step, " ", output.filename)
-      #saveoutput(output)
+      saveoutput(output)
     end
   end
 

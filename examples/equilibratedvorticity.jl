@@ -6,7 +6,7 @@ using JLD2
 
 Ro = 0.1      # Rossby number
 Rμ = 1e-4     # Ratio of drag and inertial time-scale
-Rν = 1.0      # Ratio of viscous and inertial time-scale
+Rν = 2e1      # Ratio of viscous and inertial time-scale
  f = 1e-4     # Planetary vorticity
 
 tq = 1/(f*Ro) # Eddy turnover time-scale
@@ -26,7 +26,10 @@ ns = 10
 
 @printf("Running stochastic forced turbulence for %d steps...\n", nt)
 
-plotname = @sprintf("equilq_n%d_Ro%.1e_Rmu%.1e_ki%d", n, Ro, Rμ, ki*L/2π)
+#plotname = @sprintf("equilq_n%d_Ro%.1e_Rmu%.1e_Rnu_%.1e_ki%d", 
+#  n, Ro, Rμ, Rν, ki*L/2π)
+
+plotname = "test"
   
 prob, diags, filename = initandrunproblem(L=L, n=n, fi=fi, ki=ki, tf=tf, dt=dt, 
   withplot=true, ns=ns, ν=ν, μ=μ, stepper="FilteredRK4", plotname=plotname,
