@@ -1,7 +1,7 @@
 module StochasticForcingProblems
 
 using TurbulenceTools, TurbulenceTools.TwoDTurbTools, FourierFlows, 
-      FourierFlows.TwoDTurb, PyPlot
+      FourierFlows.TwoDTurb, PyPlot, JLD2
 
 export getresidual, getdiags, savediags,
        runproblem, makeproblem, initandrunproblem, makeplot
@@ -234,9 +234,11 @@ function runproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
       end
     end
 
+    #@save "test_$(prob.step).jld" prob.state.sol
     if output != nothing
       saveoutput(output)
     end
+
   end
 
   updatevars!(prob)
