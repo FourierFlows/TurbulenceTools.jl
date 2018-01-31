@@ -8,9 +8,6 @@ Module structure:
 
     TwoDTurbTools
       ... twodturb utilities
-      InitialValueProblems
-      SteadyForcingProblems
-      StochasticForcingProblems
 
     VerticallyCosineBoussinesqTools
     ...
@@ -41,49 +38,7 @@ function getbasicoutput(prob; filename="default", filedir="data")
   Output(prob, filename, (:sol, getsol))
 end
 
-# ----------------------------------------------------------------------------- 
-# TwoDTurbTools --------------------------------------------------------------- 
-# ----------------------------------------------------------------------------- 
-module TwoDTurbTools
-using FourierFlows.TwoDTurb
-export cfl
-
-"""
-    cfl(prob)
-
-Returns the CFL number defined by CFL = max([max(U)*dx/dt max(V)*dy/dt]).
-"""
-function cfl(prob)
-  prob.ts.dt*maximum(
-    [maximum(prob.vars.U)/prob.grid.dx, maximum(prob.vars.V)/prob.grid.dy])
-end
-
-include(joinpath("twodturb", "stochasticforcing.jl"))
-include(joinpath("twodturb", "steadyforcing.jl"))
-
-end # TwoDTurbTools module
-
-
-# ----------------------------------------------------------------------------- 
-# TwoDTurbTools --------------------------------------------------------------- 
-# ----------------------------------------------------------------------------- 
-module VerticallyCosineTools
-using FourierFlows.VerticallyCosineBoussinesq
-export cfl
-
-"""
-    cfl(prob)
-
-Returns the CFL number defined by CFL = max([max(U)*dx/dt max(V)*dy/dt]).
-"""
-function cfl(prob)
-  prob.ts.dt*maximum(
-    [maximum(prob.vars.U)/prob.grid.dx, maximum(prob.vars.V)/prob.grid.dy,
-     maximum(prob.vars.u)/prob.grid.dx, maximum(prob.vars.v)/prob.grid.dy  ])
-end
-
-include(joinpath("verticallycosineboussinesq", "stochasticwaveturb.jl"))
-
-end
+include("twodturbtools.jl")
+include("verticallycosinetools.jl")
 
 end # module

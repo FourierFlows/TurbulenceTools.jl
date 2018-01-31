@@ -1,3 +1,5 @@
 *.jld2
+*.jld
+*.mat
 *.png
 *.swp

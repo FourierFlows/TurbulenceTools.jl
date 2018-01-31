@@ -1,9 +1,20 @@
-module StochasticWaveTurbProblems
+module VerticallyCosineTools
 
-using FourierFlows, FourierFlows.VerticallyCosineBoussinesq, PyPlot, JLD2,
-      TurbulenceTools, TurbulenceTools.VerticallyCosineTools
+using TurbulenceTools, FourierFlows, FourierFlows.VerticallyCosineBoussinesq, 
+      PyPlot, JLD2
 
 export startfromfile, runproblem, makeproblem, makeplot!
+
+"""
+    cfl(prob)
+
+Returns the CFL number defined by CFL = max([max(U)*dx/dt max(V)*dy/dt]).
+"""
+function cfl(prob)
+  prob.ts.dt*maximum(
+    [maximum(prob.vars.U)/prob.grid.dx, maximum(prob.vars.V)/prob.grid.dy,
+     maximum(prob.vars.u)/prob.grid.dx, maximum(prob.vars.v)/prob.grid.dy  ])
+end
 
 """
     prob, diags = startfromfile(filename; kwargs...)
@@ -32,7 +43,7 @@ function startfromfile(filename; stepper="RK4", f=1.0, N=1.0, m=1.0,
   end
 
   laststep = keys(file["timeseries/sol"])[end]
-  q0h = file["timeseries/sol/$laststep"]
+  qh = file["timeseries/sol/$laststep"]
   close(file)
 
   if  nu1 == nothing;  nu1=nu0;  end
@@ -40,9 +51,21 @@ function startfromfile(filename; stepper="RK4", f=1.0, N=1.0, m=1.0,
   if nnu1 == nothing; nnu1=nnu0; end
   if nmu1 == nothing; nmu1=nmu0; end
   
-  q0 = irfft(q0h, nx)
+  g = TwoDGrid(nx, Lx)
+  Uh =  im * g.l  .* g.invKKrsq .* q0h
+  Vh = -im * g.kr .* g.invKKrsq .* q0h
+  U = irfft(Uh, nx)
+  V = irfft(Vh, nx)
+  q = irfft(qh, nx)
+  
+  U₀ = 0.1
+  u₀ = ε*σ*U₀/q₀
+  iᵤ = round(Int, k*L/2π) + 1
+   Γ = 0.01
 
-  prob, diags, nt = makeproblem(; n=nx, L=Lx, nu0=nu0, nnu0=nnu0, 
+
+
+  prob, diags, nt = makeproblem(q0, u0; n=nx, L=Lx, nu0=nu0, nnu0=nnu0, 
     nu1=nu1, nnu1=nnu1, mu0=mu0, nmu0=nmu0, mu1=mu1, nmu1=nmu1, dt=dt,
     f=f, N=N, m=m, ε=ε, nkw=nkw, fi=fi, ki=ki, tf=tf, stepper=stepper,
     q0=q0)
@@ -113,12 +136,27 @@ end
 Returns a Problem, vector of Diagnostics, and number of timesteps for an
 initiated stochastically-forced wave-turbulence interaction problem.
 """
-function makeproblem(; n=128, L=2π, nu0=1e-6, nnu0=1, dt=1.0,
+function makeproblem(q0, u0; n=128, L=2π, nu0=1e-6, nnu0=1, dt=1.0,
   nu1=1e-6, nnu1=1, mu0=1e-6, nmu0=1, mu1=1e-6, nmu1=1, f=1.0, N=1.0, m=4.0, 
-  ε=0.1, nkw=16, fi=1.0, ki=8, tf=1, stepper="RK4", q0=nothing)
+  ε=0.1, nkw=16, fi=1.0, ki=8, tf=1, stepper="RK4")
 
   kii = ki*L/2π
   amplitude = fi*ki/sqrt(dt) * n^2/4
+
+  aᵤ = u₀ * μ/Γ * n^2/2
+  aᵥ = aᵤ * (-im*f/σ)
+  aᵣ = aᵤ * (σ^2 - f^2)/σ
+
+  q₀ = f*Ro
+  U₀ = 0.1
+  u₀ = ε*σ*U₀/q₀
+  iᵤ = round(Int, k*L/2π) + 1
+   Γ = 0.01
+
+
+
+
+
   function calcF!(F, sol, t, s, v, p, g)
 
     if t == s.t # not a substep
@@ -151,9 +189,8 @@ function makeproblem(; n=128, L=2π, nu0=1e-6, nnu0=1, dt=1.0,
   uw = ε*σ/ki # wave velocity defined in terms of wave nonlinearity
     
   # For now, initial wave condition is a plane wave.
-  set_planewave!(prob, uw, kw)
-
-  if q0 != nothing; set_Z!(prob, q0); end
+  #set_planewave!(prob, uw, kw)
+  set_Z!(prob, q0)
 
   diags = getdiags(prob, nt)
 
@@ -213,6 +250,5 @@ function makeplot!(axs, prob, diags)
   tight_layout()
   nothing
 end
-
 
 end # module

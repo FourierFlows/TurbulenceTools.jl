@@ -1,11 +1,95 @@
-module StochasticForcingProblems
+module TwoDTurbTools
 
-using TurbulenceTools, TurbulenceTools.TwoDTurbTools, FourierFlows, 
-      FourierFlows.TwoDTurb, PyPlot, JLD2
+using TurbulenceTools, FourierFlows, FourierFlows.TwoDTurb, PyPlot, JLD2
 
-export getresidual, getdiags, savediags,
+export cfl, getresidual, getdiags, savediags,
        runproblem, makeproblem, initandrunproblem, makeplot
 
+function loadgridparams(filename)
+  file = jldopen(filename)
+  nx = file["grid/nx"]
+  ny = file["grid/ny"]
+  Lx = file["grid/Lx"]
+  Ly = file["grid/Ly"]
+  close(file)
+  nx, Lx, ny, Ly
+end
+
+function loadtimestep(filename)
+  file = jldopen(filename)
+  dt = file["timestepper/dt"]
+  dt
+end 
+
+function loadparams(filename)
+  file = jldopen(filename)
+   ν = file["params/ν"]
+  nν = file["params/nν"]
+   μ = file["params/μ"]
+  nμ = file["params/nμ"]
+  close(file)
+  ν, nν, μ, nμ
+end
+
+function loadforcingparams(filename)
+  file = jldopen(filename)
+  fi = file["forcingparams/fi"]
+  ki = kile["forcingparams/ki"]
+  fi, ki
+end
+
+function loadlastsolution(filename)
+  file = jldopen(filename)
+  laststep = parse(keys(file["timeseries/sol"])[end])
+  sol = file["timeseries/sol/$laststep"]
+  t = file["timeseries/t/$laststep"]
+  laststep, t, sol
+end
+
+function restartchanproblem(filename; ns=1, nt=1, tf=nothing, 
+  stepper="FilteredRK4", withplot=false, plotname=nothing)
+
+  nx, Lx, ny, Ly = loadgridparams(filename)
+  ν, nν, μ, nμ = loadparams(filename)  
+  fi, ki = loadforcingparams(filename)
+  dt = loadtimestep(filename)
+
+  if tf != nothing
+    nt = round(Int, tf/dt)
+  else
+    tf = nt*dt
+  end
+
+  prob, diags, nt = makeproblem(n=nx, L=Lx, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
+    fi=fi, ki=ki, tf=tf, stepper=stepper)
+
+  # Load last saved solution
+  step, t, sol = loadlastsolution(filename) 
+  prob.state.step = step
+  prob.state.t = t
+  prob.state.sol .= sol
+  updatevars!(prob) # for fun
+
+  newfilename = filename[1:end-5] * "-restart.jld2"
+  output = getbasicoutput(prob; filename=newfilename)
+
+  runproblem(prob, diags, nt; withplot=withplot, ns=ns, output=output,
+    plotname=plotname)
+  
+  prob, diags, output
+end
+
+"""
+    cfl(prob)
+
+Returns the CFL number defined by CFL = max(u*dt/dX), where u = (U, V) is 
+the horizontal velocity and dX = (dx, dy) the grid spacing.
+"""
+function cfl(prob)
+  prob.ts.dt*maximum(
+    [maximum(prob.vars.U)/prob.grid.dx, maximum(prob.vars.V)/prob.grid.dy,
+     maximum(prob.vars.u)/prob.grid.dx, maximum(prob.vars.v)/prob.grid.dy  ])
+end
 
 """
     getresidual(prob, E, I, D, R, ψ, F; i0=1)
@@ -18,7 +102,7 @@ Returns the residual defined by
 
 where I = -<ψF>, D = ν<ψΔⁿζ>, and R = μ<ψΔⁿ¹ζ>, with n and n1 the order of 
 hyper- and hypo-dissipation operators, respectively. For the stochastic case,
-care is needed to calculate the dissipation correctly.
+care is needed to calculate I correctly.
 """
 function getresidual(prob, E, I, D, R, ψ, F; ii0=1, iif=E.count) 
 
@@ -76,8 +160,8 @@ end
 Makes a three-components plot of the vorticity field, energy tendency, and 
 energy.
 """
-function makeplot(prob, diags)
-
+function makeplot(prob, diags; i₀=1)
+  
   updatevars!(prob)  
   E, Z, D, I, R, F = diags
 
@@ -90,8 +174,6 @@ function makeplot(prob, diags)
   ylabel(L"y")
 
   sca(axs[2]); cla()
-
-  i₀ = 1
   dEdt = (E[(i₀+1):E.count] - E[i₀:E.count-1])/prob.ts.dt
   ii = (i₀+1):E.count
 
@@ -134,6 +216,10 @@ function initandrunproblem(; n=128, L=2π, ν=4e-3, nν=1,
   
   if withoutput
     output = getbasicoutput(prob; filename=filename)
+    jldopen(output.filename, "r+") do file
+      file["forcingparams/fi"] = fi
+      file["forcingparams/ki"] = ki
+    end
   else
     output = nothing
   end
@@ -141,10 +227,8 @@ function initandrunproblem(; n=128, L=2π, ν=4e-3, nν=1,
   runproblem(prob, diags, nt; withplot=withplot, ns=ns, output=output,
     plotname=plotname)
 
-  if withoutput
-    return prob, diags, output.filename
-  else
-    return prob, diags
+  if withoutput; return prob, diags, output
+  else;          return prob, diags
   end
 end
 
@@ -234,11 +318,9 @@ function runproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
       end
     end
 
-    #@save "test_$(prob.step).jld" prob.state.sol
     if output != nothing
       saveoutput(output)
     end
-
   end
 
   updatevars!(prob)
