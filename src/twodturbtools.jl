@@ -2,8 +2,8 @@ module TwoDTurbTools
 
 using TurbulenceTools, FourierFlows, FourierFlows.TwoDTurb, PyPlot, JLD2
 
-export cfl, getresidual, getdiags, savediags,
-       runproblem, makeproblem, initandrunproblem, makeplot
+export cfl, getresidual, getdiags, savediags, restartchanproblem,
+       runchanproblem, makechanproblem, initandrunchanproblem, makeplot
 
 function loadgridparams(filename)
   file = jldopen(filename)
@@ -34,7 +34,7 @@ end
 function loadforcingparams(filename)
   file = jldopen(filename)
   fi = file["forcingparams/fi"]
-  ki = kile["forcingparams/ki"]
+  ki = file["forcingparams/ki"]
   fi, ki
 end
 
@@ -49,31 +49,32 @@ end
 function restartchanproblem(filename; ns=1, nt=1, tf=nothing, 
   stepper="FilteredRK4", withplot=false, plotname=nothing)
 
-  nx, Lx, ny, Ly = loadgridparams(filename)
-  ν, nν, μ, nμ = loadparams(filename)  
-  fi, ki = loadforcingparams(filename)
-  dt = loadtimestep(filename)
+  fullfilename = filename[end-5:end] != ".jld2" ? filename*".jld2" : filename
+
+  nx, Lx, ny, Ly = loadgridparams(fullfilename)
+  ν, nν, μ, nμ = loadparams(fullfilename)  
+  fi, ki = loadforcingparams(fullfilename)
+  dt = loadtimestep(fullfilename)
+  step, t, sol = loadlastsolution(fullfilename) # Load last saved solution
 
   if tf != nothing
-    nt = round(Int, tf/dt)
+    nt = round(Int, (tf-t)/dt)
   else
-    tf = nt*dt
+    tf = t + nt*dt
   end
 
-  prob, diags, nt = makeproblem(n=nx, L=Lx, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
+  prob, diags, nt = makechanproblem(n=nx, L=Lx, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
     fi=fi, ki=ki, tf=tf, stepper=stepper)
 
-  # Load last saved solution
-  step, t, sol = loadlastsolution(filename) 
   prob.state.step = step
   prob.state.t = t
   prob.state.sol .= sol
   updatevars!(prob) # for fun
 
-  newfilename = filename[1:end-5] * "-restart.jld2"
+  newfilename = fullfilename[1:end-5] * "-restart"
   output = getbasicoutput(prob; filename=newfilename)
 
-  runproblem(prob, diags, nt; withplot=withplot, ns=ns, output=output,
+  runchanproblem(prob, diags, nt; withplot=withplot, ns=ns, output=output,
     plotname=plotname)
   
   prob, diags, output
@@ -87,8 +88,7 @@ the horizontal velocity and dX = (dx, dy) the grid spacing.
 """
 function cfl(prob)
   prob.ts.dt*maximum(
-    [maximum(prob.vars.U)/prob.grid.dx, maximum(prob.vars.V)/prob.grid.dy,
-     maximum(prob.vars.u)/prob.grid.dx, maximum(prob.vars.v)/prob.grid.dy  ])
+    [maximum(prob.vars.U)/prob.grid.dx, maximum(prob.vars.V)/prob.grid.dy])
 end
 
 """
@@ -202,20 +202,20 @@ function makeplot(prob, diags; i₀=1)
 end
 
 """
-    runproblem(; parameters...)
+    runchanproblem(; parameters...)
 
 Create and run a two-dimensional turbulence problem with the "Chan forcing".
 """
-function initandrunproblem(; n=128, L=2π, ν=4e-3, nν=1, 
+function initandrunchanproblem(; n=128, L=2π, ν=4e-3, nν=1, 
   μ=1e-1, nμ=0, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, θ=π/4, 
   withplot=false, withoutput=false, stepper="RK4", plotname=nothing,
   filename="default")
 
-  prob, diags, nt = makeproblem(n=n, L=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, fi=fi, 
-    ki=ki, tf=tf, stepper=stepper)
+  prob, diags, nt = makechanproblem(n=n, L=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt,
+     fi=fi, ki=ki, tf=tf, stepper=stepper)
   
   if withoutput
-    output = getbasicoutput(prob; filename=filename)
+    output = getbasicoutput(prob; filename=filename, filedir="data")
     jldopen(output.filename, "r+") do file
       file["forcingparams/fi"] = fi
       file["forcingparams/ki"] = ki
@@ -224,7 +224,7 @@ function initandrunproblem(; n=128, L=2π, ν=4e-3, nν=1,
     output = nothing
   end
 
-  runproblem(prob, diags, nt; withplot=withplot, ns=ns, output=output,
+  runchanproblem(prob, diags, nt; withplot=withplot, ns=ns, output=output,
     plotname=plotname)
 
   if withoutput; return prob, diags, output
@@ -233,13 +233,13 @@ function initandrunproblem(; n=128, L=2π, ν=4e-3, nν=1,
 end
 
 """
-    prob, diags, nt = makeproblem(; parameters...)
+    prob, diags, nt = makechanproblem(; parameters...)
 
 Returns a problem, vector of Diagnostics, and the number of timesteps for a 
 two-dimensional turbulence problem forced by the "Chan forcing" 
 with the specified parameters.
 """
-function makeproblem(; n=128, L=2π, ν=1e-3, nν=1, 
+function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1, 
   μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4")
 
   kii = ki*L/2π
@@ -271,7 +271,7 @@ function makeproblem(; n=128, L=2π, ν=1e-3, nν=1,
 end
 
 """
-    runproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
+    runchanproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
                    plotname=nothing, message=nothing)
 
 Run the problem "prob" with useful messages, making plots if withplot 
@@ -280,7 +280,7 @@ message can be specified with the "message" keyword argument, where
 message(prob) is a function that returns a string. The string
 "plotname" should be specified without the ".png" suffix.
 """
-function runproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
+function runchanproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
                         plotname=nothing, message=nothing)
                         
   nint = round(Int, nt/ns)
