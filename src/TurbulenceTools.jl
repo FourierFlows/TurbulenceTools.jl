@@ -31,9 +31,7 @@ ticksoff!(axs::AbstractArray) = for ax in axs; ticksoff!(ax); end
 
 Returns Output whose only field is the solution.
 """
-function getbasicoutput(prob; filename="default", filedir=".")
-  if !isdir(filedir); mkdir(filedir); end
-  filename = joinpath(filedir, filename)
+function getbasicoutput(prob; filename="default")
   getsol(prob) = deepcopy(prob.state.sol)
   Output(prob, filename, (:sol, getsol))
 end

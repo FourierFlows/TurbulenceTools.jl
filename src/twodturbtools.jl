@@ -5,6 +5,11 @@ using TurbulenceTools, FourierFlows, FourierFlows.TwoDTurb, PyPlot, JLD2
 export cfl, getresidual, getdiags, savediags, restartchanproblem,
        runchanproblem, makechanproblem, initandrunchanproblem, makeplot
 
+"""
+    loadgridparams(filename)
+
+Returns nx, Lx, ny, Ly from the FourierFlows output stored in filename.
+"""
 function loadgridparams(filename)
   file = jldopen(filename)
   nx = file["grid/nx"]
@@ -15,12 +20,22 @@ function loadgridparams(filename)
   nx, Lx, ny, Ly
 end
 
+"""
+    loadtimestep(filename)
+
+Returns dt from the FourierFlows output stored in filename.
+"""
 function loadtimestep(filename)
   file = jldopen(filename)
   dt = file["timestepper/dt"]
   dt
 end 
 
+"""
+    loadparams(filename)
+
+Returns ν, nν, μ, nμ from the FourierFlows output stored in filename.
+"""
 function loadparams(filename)
   file = jldopen(filename)
    ν = file["params/ν"]
@@ -31,6 +46,11 @@ function loadparams(filename)
   ν, nν, μ, nμ
 end
 
+"""
+    loadforcingparams(filename)
+
+Returns fi, ki from the FourierFlows output stored in filename.
+"""
 function loadforcingparams(filename)
   file = jldopen(filename)
   fi = file["forcingparams/fi"]
@@ -38,6 +58,12 @@ function loadforcingparams(filename)
   fi, ki
 end
 
+"""
+    loadlastsolution(filename)
+
+Returns the value of :sol with the highest timestep in the timeseris stored 
+in the FourierFlows output file filename.
+"""
 function loadlastsolution(filename)
   file = jldopen(filename)
   laststep = parse(keys(file["timeseries/sol"])[end])
@@ -46,6 +72,10 @@ function loadlastsolution(filename)
   laststep, t, sol
 end
 
+"""
+    restartchanproblem(filename)
+
+"""
 function restartchanproblem(filename; ns=1, nt=1, tf=nothing, 
   stepper="FilteredRK4", withplot=false, plotname=nothing)
 
@@ -71,7 +101,7 @@ function restartchanproblem(filename; ns=1, nt=1, tf=nothing,
   prob.state.sol .= sol
   updatevars!(prob) # for fun
 
-  newfilename = fullfilename[1:end-5] * "-restart"
+  newfilename = fullfilename[1:end-5] * "_restart"
   output = getbasicoutput(prob; filename=newfilename)
 
   runchanproblem(prob, diags, nt; withplot=withplot, ns=ns, output=output,
@@ -181,10 +211,11 @@ function makeplot(prob, diags; i₀=1)
   dEdt₁ = I[ii] - D[ii] - R[ii]
   residual = dEdt - dEdt₁
 
+  plot(E.time[ii], dEdt,   label=L"E_t")
   plot(E.time[ii], -D[ii], label="dissipation (\$D\$)")
   plot(E.time[ii], -R[ii], label="drag (\$R\$)")
-  plot(E.time[ii], residual, "c^", markersize=0.5, label="residual")
-  plot(E.time[ii], I[ii], "o", markersize=0.5, label="injection (\$I\$)")
+  #plot(E.time[ii], residual, "c^", markersize=0.5, label="residual")
+  #plot(E.time[ii], I[ii], "o", markersize=0.5, label="injection (\$I\$)")
 
   ylabel("Energy sources and sinks")
   xlabel(L"t")
@@ -196,8 +227,6 @@ function makeplot(prob, diags; i₀=1)
   ylabel(L"E")
 
   tight_layout()
-  pause(0.1)
-
   nothing
 end
 
@@ -215,7 +244,7 @@ function initandrunchanproblem(; n=128, L=2π, ν=4e-3, nν=1,
      fi=fi, ki=ki, tf=tf, stepper=stepper)
   
   if withoutput
-    output = getbasicoutput(prob; filename=filename, filedir="data")
+    output = getbasicoutput(prob; filename=filename)
     jldopen(output.filename, "r+") do file
       file["forcingparams/fi"] = fi
       file["forcingparams/ki"] = ki
@@ -282,12 +311,13 @@ message(prob) is a function that returns a string. The string
 """
 function runchanproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
                         plotname=nothing, message=nothing)
-                        
+
+  @printf("\nRunning Chan 2D turbulence problem for %d steps...\n", nt)
+  if output != nothing; println("Output: $(output.filename)"); end
+
   nint = round(Int, nt/ns)
   for i = 1:ns
-    tic()
-    stepforward!(prob, diags, nint)
-    tc = toq()
+    tc = @elapsed stepforward!(prob, diags, nint)
     updatevars!(prob)  
 
     res = getresidual(prob, diags) # residual = dEdt - I + D + R
@@ -310,10 +340,7 @@ function runchanproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
     if withplot     
       makeplot(prob, diags)
       if plotname != nothing
-        plotdir = joinpath(".", "plots")
-        fullplotname = joinpath(plotdir, 
-          @sprintf("%s_%d.png", plotname, prob.step))
-        if !isdir(plotdir); mkdir(plotdir); end
+        fullplotname = @sprintf("%s_%09d.png", plotname, prob.step)
         savefig(fullplotname, dpi=240)
       end
     end
