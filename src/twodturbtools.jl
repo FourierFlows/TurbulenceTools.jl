@@ -104,7 +104,7 @@ function restartchanproblem(filename; ns=1, nt=1, tf=nothing,
   newfilename = fullfilename[1:end-5] * "_restart"
   output = getbasicoutput(prob; filename=newfilename)
 
-  runchanproblem(prob, diags, nt; withplot=withplot, ns=ns, output=output,
+  runchanproblem(prob, diags, nt, fi; withplot=withplot, ns=ns, output=output,
     plotname=plotname)
   
   prob, diags, output
@@ -134,7 +134,7 @@ where I = -<ψF>, D = ν<ψΔⁿζ>, and R = μ<ψΔⁿ¹ζ>, with n and n1 the 
 hyper- and hypo-dissipation operators, respectively. For the stochastic case,
 care is needed to calculate I correctly.
 """
-function getresidual(prob, E, I, D, R, ψ, F; ii0=1, iif=E.count) 
+function getresidual(prob, E, I, D, R, ψ, F, fi; ii0=1, iif=E.count) 
 
   # Forward difference: dEdt calculated at ii=ii0:(iif-1) 
   ii = ii0:(iif-1) 
@@ -142,12 +142,12 @@ function getresidual(prob, E, I, D, R, ψ, F; ii0=1, iif=E.count)
 
   # to calculate dEdt for fixed dt
   dEdt = ( E[ii₊₁] - E[ii] ) / prob.ts.dt
-  dEdt - I[ii] + D[ii] + R[ii]
+  dEdt - I[ii] + 0.5*fi^2 + D[ii] + R[ii]
 end
 
-function getresidual(prob, diags; kwargs...)
+function getresidual(prob, diags, fi; kwargs...)
   E, Z, D, I, R, F, ψ = diags[1:7]
-  getresidual(prob, E, I, D, R, ψ, F; kwargs...)
+  getresidual(prob, E, I, D, R, ψ, F, fi; kwargs...)
 end
 
 """
@@ -190,7 +190,7 @@ end
 Makes a three-components plot of the vorticity field, energy tendency, and 
 energy.
 """
-function makeplot(prob, diags; i₀=1)
+function makeplot(prob, diags, fi; i₀=1)
   
   updatevars!(prob)  
   E, Z, D, I, R, F = diags
@@ -208,13 +208,13 @@ function makeplot(prob, diags; i₀=1)
   ii = (i₀+1):E.count
 
   # dEdt = I - D - R?
-  dEdt₁ = I[ii] - D[ii] - R[ii]
+  dEdt₁ = I[ii] - 0.5*fi^2 - D[ii] - R[ii]
   residual = dEdt - dEdt₁
 
-  plot(E.time[ii], dEdt,   label=L"E_t")
+  #plot(E.time[ii], dEdt,   label=L"E_t")
   plot(E.time[ii], -D[ii], label="dissipation (\$D\$)")
   plot(E.time[ii], -R[ii], label="drag (\$R\$)")
-  #plot(E.time[ii], residual, "c^", markersize=0.5, label="residual")
+  plot(E.time[ii], residual, "c^", markersize=0.5, label="residual")
   #plot(E.time[ii], I[ii], "o", markersize=0.5, label="injection (\$I\$)")
 
   ylabel("Energy sources and sinks")
@@ -231,7 +231,7 @@ function makeplot(prob, diags; i₀=1)
 end
 
 """
-    runchanproblem(; parameters...)
+    initandrunchanproblem(; parameters...)
 
 Create and run a two-dimensional turbulence problem with the "Chan forcing".
 """
@@ -253,7 +253,7 @@ function initandrunchanproblem(; n=128, L=2π, ν=4e-3, nν=1,
     output = nothing
   end
 
-  runchanproblem(prob, diags, nt; withplot=withplot, ns=ns, output=output,
+  runchanproblem(prob, diags, nt, fi; withplot=withplot, ns=ns, output=output,
     plotname=plotname)
 
   if withoutput; return prob, diags, output
@@ -300,7 +300,7 @@ function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1,
 end
 
 """
-    runchanproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
+    runchanproblem(prob, diags, nt, fi; ns=1, withplot=false, output=nothing,
                    plotname=nothing, message=nothing)
 
 Run the problem "prob" with useful messages, making plots if withplot 
@@ -309,7 +309,7 @@ message can be specified with the "message" keyword argument, where
 message(prob) is a function that returns a string. The string
 "plotname" should be specified without the ".png" suffix.
 """
-function runchanproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
+function runchanproblem(prob, diags, nt, fi; ns=1, withplot=false, output=nothing,
                         plotname=nothing, message=nothing)
 
   @printf("\nRunning Chan 2D turbulence problem for %d steps...\n", nt)
@@ -320,7 +320,7 @@ function runchanproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
     tc = @elapsed stepforward!(prob, diags, nint)
     updatevars!(prob)  
 
-    res = getresidual(prob, diags) # residual = dEdt - I + D + R
+    res = getresidual(prob, diags, fi) # residual = dEdt - I + D + R
 
     # Some analysis
     E, Z, D, I, R, F = diags
@@ -338,7 +338,7 @@ function runchanproblem(prob, diags, nt; ns=1, withplot=false, output=nothing,
     if message != nothing; println(message(prob)); end
 
     if withplot     
-      makeplot(prob, diags)
+      makeplot(prob, diags, fi)
       if plotname != nothing
         fullplotname = @sprintf("%s_%09d.png", plotname, prob.step)
         savefig(fullplotname, dpi=240)
