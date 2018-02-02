@@ -141,7 +141,7 @@ function makeproblem(q0, u0; n=128, L=2π, nu0=1e-6, nnu0=1, dt=1.0,
   ε=0.1, nkw=16, fi=1.0, ki=8, tf=1, stepper="RK4")
 
   kii = ki*L/2π
-  amplitude = fi*ki/sqrt(dt) * n^2/4
+  amplitude = fi*ki/sqrt(dt) * n^2/2
 
   aᵤ = u₀ * μ/Γ * n^2/2
   aᵥ = aᵤ * (-im*f/σ)
@@ -152,10 +152,6 @@ function makeproblem(q0, u0; n=128, L=2π, nu0=1e-6, nnu0=1, dt=1.0,
   u₀ = ε*σ*U₀/q₀
   iᵤ = round(Int, k*L/2π) + 1
    Γ = 0.01
-
-
-
-
 
   function calcF!(F, sol, t, s, v, p, g)
 

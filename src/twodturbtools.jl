@@ -227,6 +227,7 @@ function makeplot(prob, diags, fi; i₀=1)
   ylabel(L"E")
 
   tight_layout()
+  pause(0.01)
   nothing
 end
 
@@ -272,7 +273,7 @@ function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1,
   μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4")
 
   kii = ki*L/2π
-  amplitude = fi*ki/sqrt(dt) * n^2/4
+  amplitude = fi*ki/sqrt(dt) * n^2/2
   function calcF!(F, sol, t, s, v, p, g)
     if t == s.t # not a substep
       F .= 0.0
@@ -294,7 +295,7 @@ function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1,
   nt = round(Int, tf/dt)
   prob = TwoDTurb.Problem(nx=n, Lx=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
                           calcF=calcF!, stepper=stepper)
-  diags = getdiags(prob, nt)
+  diags = [] #getdiags(prob, nt)
 
   prob, diags, nt
 end
@@ -317,9 +318,14 @@ function runchanproblem(prob, diags, nt, fi; ns=1, withplot=false, output=nothin
 
   nint = round(Int, nt/ns)
   for i = 1:ns
-    tc = @elapsed stepforward!(prob, diags, nint)
-    updatevars!(prob)  
+    #tc = @elapsed stepforward!(prob, diags, nint)
+    tc = @elapsed stepforward!(prob, nint)
+    updatevars!(prob)
+    saveoutput(output)
 
+    @printf("step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s\n", prob.step, prob.t, cfl(prob), tc)
+
+    #=
     res = getresidual(prob, diags, fi) # residual = dEdt - I + D + R
 
     # Some analysis
@@ -339,15 +345,13 @@ function runchanproblem(prob, diags, nt, fi; ns=1, withplot=false, output=nothin
 
     if withplot     
       makeplot(prob, diags, fi)
-      if plotname != nothing
-        fullplotname = @sprintf("%s_%09d.png", plotname, prob.step)
-        savefig(fullplotname, dpi=240)
-      end
+      #if plotname != nothing
+      #  fullplotname = @sprintf("%s_%09d.png", plotname, prob.step)
+      #  savefig(fullplotname, dpi=240)
+      #end
     end
+    =#
 
-    if output != nothing
-      saveoutput(output)
-    end
   end
 
   updatevars!(prob)
