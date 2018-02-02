@@ -4,7 +4,7 @@ This package provides code and tools for solving problems in geophysical turbule
 
 This package is not yet an official Julia package. For now, the package is used by typing
 
-```
+```julia
 julia> Pkg.clone("https://github.com/FourierFlows/TurbulenceTools")
 ```
 
