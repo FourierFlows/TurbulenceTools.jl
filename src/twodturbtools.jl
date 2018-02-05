@@ -204,17 +204,20 @@ function makeplot(prob, diags, fi; i₀=1)
   ylabel(L"y")
 
   sca(axs[2]); cla()
+  
+  #=
   dEdt = (E[(i₀+1):E.count] - E[i₀:E.count-1])/prob.ts.dt
   ii = (i₀+1):E.count
 
   # dEdt = I - D - R?
   dEdt₁ = I[ii] - 0.5*fi^2 - D[ii] - R[ii]
   residual = dEdt - dEdt₁
+  =#
 
   #plot(E.time[ii], dEdt,   label=L"E_t")
-  plot(E.time[ii], -D[ii], label="dissipation (\$D\$)")
-  plot(E.time[ii], -R[ii], label="drag (\$R\$)")
-  plot(E.time[ii], residual, "c^", markersize=0.5, label="residual")
+  plot(E[:time], -D[:], label="dissipation (\$D\$)")
+  plot(E[:time], -R[:], label="drag (\$R\$)")
+  #plot(E.time[:], residual, "c^", markersize=0.5, label="residual")
   #plot(E.time[ii], I[ii], "o", markersize=0.5, label="injection (\$I\$)")
 
   ylabel("Energy sources and sinks")
@@ -222,7 +225,7 @@ function makeplot(prob, diags, fi; i₀=1)
   legend(fontsize=10, loc="lower right")
 
   sca(axs[3]); cla()
-  plot(E.time[ii], E[ii])
+  plot(E[:time], E[:])
   xlabel(L"t")
   ylabel(L"E")
 
@@ -270,7 +273,7 @@ two-dimensional turbulence problem forced by the "Chan forcing"
 with the specified parameters.
 """
 function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1, 
-  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4")
+  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4", numdiags=10000)
 
   kii = ki*L/2π
   amplitude = fi*ki/sqrt(dt) * n^2/2
@@ -295,7 +298,7 @@ function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1,
   nt = round(Int, tf/dt)
   prob = TwoDTurb.Problem(nx=n, Lx=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
                           calcF=calcF!, stepper=stepper)
-  diags = [] #getdiags(prob, nt)
+  diags = getdiags(prob, numdiags)
 
   prob, diags, nt
 end
@@ -318,40 +321,21 @@ function runchanproblem(prob, diags, nt, fi; ns=1, withplot=false, output=nothin
 
   nint = round(Int, nt/ns)
   for i = 1:ns
-    #tc = @elapsed stepforward!(prob, diags, nint)
-    tc = @elapsed stepforward!(prob, nint)
+    tc = @elapsed stepforward!(prob, diags, nint)
     updatevars!(prob)
     saveoutput(output)
 
     @printf("step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s\n", prob.step, prob.t, cfl(prob), tc)
 
-    #=
-    res = getresidual(prob, diags, fi) # residual = dEdt - I + D + R
-
-    # Some analysis
-    E, Z, D, I, R, F = diags
-
-    iavg = (length(res)-nint+1):length(res)
-
-    avgI = mean(I[iavg])
-    norm = maximum([ mean(abs.(D[iavg])), mean(abs.(R[iavg])) ])
-    resnorm = mean(res[iavg])/norm
-
-    @printf(
-      "step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s, <res>: %.3e, <I>: %.2f\n", 
-      prob.step, prob.t, cfl(prob), tc, resnorm, avgI)
-
     if message != nothing; println(message(prob)); end
 
     if withplot     
       makeplot(prob, diags, fi)
-      #if plotname != nothing
-      #  fullplotname = @sprintf("%s_%09d.png", plotname, prob.step)
-      #  savefig(fullplotname, dpi=240)
-      #end
+      if plotname != nothing
+        fullplotname = @sprintf("%s_%09d.png", plotname, prob.step)
+        savefig(fullplotname, dpi=240)
+      end
     end
-    =#
-
   end
 
   updatevars!(prob)
