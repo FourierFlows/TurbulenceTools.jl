@@ -272,7 +272,7 @@ function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1,
   μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4")
 
   kii = ki*L/2π
-  amplitude = fi*ki/sqrt(dt) * n^2/4
+  amplitude = fi*ki/sqrt(dt) * n^2/2
   function calcF!(F, sol, t, s, v, p, g)
     if t == s.t # not a substep
       F .= 0.0
