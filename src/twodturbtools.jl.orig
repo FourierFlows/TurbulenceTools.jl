@@ -204,6 +204,22 @@ function makeplot(prob, diags, fi; i₀=1)
   ylabel(L"y")
 
   sca(axs[2]); cla()
+<<<<<<< HEAD
+  
+  #=
+  dEdt = (E[(i₀+1):E.count] - E[i₀:E.count-1])/prob.ts.dt
+  ii = (i₀+1):E.count
+
+  # dEdt = I - D - R?
+  dEdt₁ = I[ii] - 0.5*fi^2 - D[ii] - R[ii]
+  residual = dEdt - dEdt₁
+  =#
+
+  #plot(E.time[ii], dEdt,   label=L"E_t")
+  plot(E[:time], -D[:], label="dissipation (\$D\$)")
+  plot(E[:time], -R[:], label="drag (\$R\$)")
+  #plot(E.time[:], residual, "c^", markersize=0.5, label="residual")
+=======
 
   # dEdt = I - D - R?
   #dEdt = (E[(i₀+1):E.count] - E[i₀:E.count-1])/prob.ts.dt
@@ -215,6 +231,7 @@ function makeplot(prob, diags, fi; i₀=1)
   plot(E[:time], -R[:], label="drag (\$R\$)")
   #plot(E.time[ii], dEdt,   label=L"E_t")
   #plot(E.time[ii], residual, "c^", markersize=0.5, label="residual")
+>>>>>>> NewStructure
   #plot(E.time[ii], I[ii], "o", markersize=0.5, label="injection (\$I\$)")
 
   ylabel("Energy sources and sinks")
@@ -270,7 +287,11 @@ two-dimensional turbulence problem forced by the "Chan forcing"
 with the specified parameters.
 """
 function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1, 
+<<<<<<< HEAD
+  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4", numdiags=10000)
+=======
   μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4", numdiags=1000)
+>>>>>>> NewStructure
 
   kii = ki*L/2π
   amplitude = fi*ki/sqrt(dt) * n^2/2
@@ -319,14 +340,25 @@ function runchanproblem(prob, diags, nt, fi; ns=1, withplot=false, output=nothin
   nint = round(Int, nt/ns)
   for i = 1:ns
     tc = @elapsed stepforward!(prob, diags, nint)
+<<<<<<< HEAD
     updatevars!(prob)
     saveoutput(output)
+=======
+    updatevars!(prob)  
 
     @printf("step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s\n", 
             prob.step, prob.t, cfl(prob), tc)
 
     #=
     res = getresidual(prob, diags) # residual = dEdt - I + D + R
+
+    # Some analysis
+    E, Z, D, I, R, F = diags
+
+    iavg = (length(res)-nint+1):length(res)
+>>>>>>> NewStructure
+
+    @printf("step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s\n", prob.step, prob.t, cfl(prob), tc)
 
     if message != nothing; println(message(prob)); end
     =#
