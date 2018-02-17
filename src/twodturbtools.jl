@@ -3,7 +3,9 @@ module TwoDTurbTools
 using TurbulenceTools, FourierFlows, FourierFlows.TwoDTurb, PyPlot, JLD2
 
 export cfl, getresidual, getdiags, savediags, restartchanproblem,
-       runchanproblem, makechanproblem, initandrunchanproblem, makeplot
+       runchanproblem, makechanproblem, initandrunchanproblem, makeplot,
+       loadgridparams, loadtimestep, loadparams, loadlastsolution,
+       loadforcingparams
 
 """
     loadgridparams(filename)
@@ -270,7 +272,7 @@ two-dimensional turbulence problem forced by the "Chan forcing"
 with the specified parameters.
 """
 function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1, 
-  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4", numdiags=1000)
+  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4", numdiags=Int(10^4))
 
   kii = ki*L/2π
   amplitude = fi*ki/sqrt(dt) * n^2/2
@@ -295,6 +297,7 @@ function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1,
   nt = round(Int, tf/dt)
   prob = TwoDTurb.Problem(nx=n, Lx=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
                           calcF=calcF!, stepper=stepper)
+  numdiags = minimum([nt, numdiags])
   diags = getdiags(prob, numdiags)
 
   prob, diags, nt
