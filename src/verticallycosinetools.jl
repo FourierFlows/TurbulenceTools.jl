@@ -3,10 +3,78 @@ module VerticallyCosineTools
 using TurbulenceTools, FourierFlows, FourierFlows.VerticallyCosineBoussinesq, 
       PyPlot, JLD2
 
+import FourierFlows.VerticallyCosineBoussinesq
+import FourierFlows: jacobian, jacobianh
+
 #import TurbulenceTools.TwoDTurb
 
 export startfromfile, runproblem, makeproblem, makeplot!,
        loadgridparams, loadtimestep, loadparams, loadforcingparams, loadlastsolution
+
+calcN_forced! = VerticallyCosineBoussinesq.calcN_forced!
+calcN! = VerticallyCosineBoussinesq.calcN!
+
+function usigvsig(prob, σ; forced=false)
+  s, v, p, g = prob.state, prob.vars, prob.params, prob.grid
+
+  @views @. v.uh = s.sol[:, :, 2]
+  @views @. v.vh = s.sol[:, :, 3]
+
+  # RHS[:, :, 4] = ph_t
+  RHS = zeros(eltype(s.sol), size(s.sol))
+  if forced
+    calcN_forced!(RHS, s.sol, prob.t, s, v, p, g)
+  else
+    calcN!(RHS, s.sol, prob.t, s, v, p, g)
+  end
+  @. RHS += prob.eqn.LC * s.sol
+
+  A_mul_B!(v.u, g.irfftplan, v.uh)
+  A_mul_B!(v.v, g.irfftplan, v.vh)
+
+  @views ut = irfft(RHS[:, :, 2], g.nx)
+  @views vt = irfft(RHS[:, :, 3], g.nx)
+
+  usig = @views exp(im*σ*prob.t)/(2*p.f) * (v.u .+ im/σ*ut)
+  vsig = @views exp(im*σ*prob.t)/(2*p.f) * (v.v .+ im/σ*vt)
+
+  usig, vsig
+end
+
+function waveapv(usig, vsig, f, sig, g)
+  
+  j1 = real.(
+    im.*jacobian(conj.(usig), usig, g) .+ im.*jacobian(conj.(vsig), vsig, g))
+  j2 = real.(
+    jacobian(conj.(vsig), usig, g) .+ jacobian(vsig, conj.(usig), g))
+
+  u2h = rfft(abs2.(usig))
+  v2h = rfft(abs2.(vsig))
+
+  uv = @. real(usig*conj(vsig) + conj(usig)*vsig)
+  uvh = rfft(uv) 
+
+  plaph = @. -(g.kr^2*u2h + g.l^2*v2h + g.kr*g.l*uvh)
+  plap = irfft(plaph, g.nx)
+
+  @. j1/sig + f/(2*sig^2)*(j2 + plap)
+end
+
+function waveapv(prob, sig)
+  usig, vsig = usigvsig(prob, sig)
+  waveapv(usig, vsig, prob.params.f, sig, prob.grid)
+end
+
+function waveinducedspeed(prob, sig)
+  g = prob.grid
+  qw = waveapv(prob, sig)
+  qwh = rfft(qw)
+  uwh = @.  im*g.kr * g.invKKrsq * qwh
+  vwh = @. -im*g.l  * g.invKKrsq * qwh
+  uw = irfft(uwh, g.nx)
+  vw = irfft(vwh, g.nx)
+  @. sqrt(uw^2+vw^2)
+end
 
 """
     loadgridparams(filename)
