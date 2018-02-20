@@ -3,6 +3,7 @@ module VerticallyCosineTools
 using TurbulenceTools, FourierFlows, FourierFlows.VerticallyCosineBoussinesq, 
       PyPlot, JLD2
 
+import TurbulenceTools.TwoDTurbTools
 import FourierFlows.VerticallyCosineBoussinesq
 import FourierFlows: jacobian, jacobianh
 
@@ -13,6 +14,59 @@ export startfromfile, runproblem, makeproblem, makeplot!,
 
 calcN_forced! = VerticallyCosineBoussinesq.calcN_forced!
 calcN! = VerticallyCosineBoussinesq.calcN!
+
+loadgridparams = TwoDTurbTools.loadgridparams
+loadtimestep = TwoDTurbTools.loadtimestep
+
+"""
+    loadparams(filename)
+
+Returns ν, nν, μ, nμ from the FourierFlows output stored in filename.
+"""
+function loadparams(filename)
+  file = jldopen(filename)
+   nu0 = file["params/nu0"]
+  nnu0 = file["params/nnu0"]
+   mu0 = file["params/mu0"]
+  nmu0 = file["params/nmu0"]
+   nu1 = file["params/nu1"]
+  nnu1 = file["params/nnu1"]
+   mu1 = file["params/mu1"]
+  nmu1 = file["params/nmu1"]
+     f = file["params/f"]
+     N = file["params/N"]
+     m = file["params/m"]
+  close(file)
+  nu0, nnu0, mu0, nmu0, nu1, nnu1, mu1, nmu1, f, N, m
+end
+
+"""
+    loadforcingparams(filename)
+
+Returns fi, ki from the FourierFlows output stored in filename.
+"""
+function loadforcingparams(filename)
+  file = jldopen(filename)
+  fi = file["forcingparams/fi"]
+  ki = file["forcingparams/ki"]
+  fi, ki
+end
+
+"""
+    loadlastsolution(filename)
+
+Returns the value of :sol with the highest timestep in the timeseris stored 
+in the FourierFlows output file filename.
+"""
+function loadlastsolution(filename)
+  file = jldopen(filename)
+  laststep = parse(keys(file["timeseries/sol"])[end])
+  sol = file["timeseries/sol/$laststep"]
+  t = file["timeseries/t/$laststep"]
+  laststep, t, sol
+end
+
+
 
 function usigvsig(prob, σ; forced=false)
   s, v, p, g = prob.state, prob.vars, prob.params, prob.grid
@@ -76,78 +130,6 @@ function waveinducedspeed(prob, sig)
   @. sqrt(uw^2+vw^2)
 end
 
-"""
-    loadgridparams(filename)
-
-Returns nx, Lx, ny, Ly from the FourierFlows output stored in filename.
-"""
-function loadgridparams(filename)
-  file = jldopen(filename)
-  nx = file["grid/nx"]
-  ny = file["grid/ny"]
-  Lx = file["grid/Lx"]
-  Ly = file["grid/Ly"]
-  close(file)
-  nx, Lx, ny, Ly
-end
-
-"""
-    loadtimestep(filename)
-
-Returns dt from the FourierFlows output stored in filename.
-"""
-function loadtimestep(filename)
-  file = jldopen(filename)
-  dt = file["timestepper/dt"]
-  dt
-end 
-
-"""
-    loadparams(filename)
-
-Returns ν, nν, μ, nμ from the FourierFlows output stored in filename.
-"""
-function loadparams(filename)
-  file = jldopen(filename)
-   ν = file["params/ν"]
-  nν = file["params/nν"]
-   μ = file["params/μ"]
-  nμ = file["params/nμ"]
-  close(file)
-  ν, nν, μ, nμ
-end
-
-"""
-    loadforcingparams(filename)
-
-Returns fi, ki from the FourierFlows output stored in filename.
-"""
-function loadforcingparams(filename)
-  file = jldopen(filename)
-  fi = file["forcingparams/fi"]
-  ki = file["forcingparams/ki"]
-  fi, ki
-end
-
-"""
-    loadlastsolution(filename)
-
-Returns the value of :sol with the highest timestep in the timeseris stored 
-in the FourierFlows output file filename.
-"""
-function loadlastsolution(filename)
-  file = jldopen(filename)
-  laststep = parse(keys(file["timeseries/sol"])[end])
-  sol = file["timeseries/sol/$laststep"]
-  t = file["timeseries/t/$laststep"]
-  laststep, t, sol
-end
-
-#loadgridparams(filename) = TwoDTurb.loadgridparams(filename)
-#loadtimestep(filename) = TwoDTurb.loadtimestep(filename)
-#loadparams(filename) = TwoDTurb.loadparams(filename)
-#loadforcingparams(filename) = TwoDTurb.loadforcingparams(filename)
-#loadlastsolution(filename) = TwoDTurb.loadlastsolution(filename)
 
 """
     cfl(prob)
