@@ -71,10 +71,6 @@ end
 function usigvsig(prob, σ; forced=false)
   s, v, p, g = prob.state, prob.vars, prob.params, prob.grid
 
-  @views @. v.uh = s.sol[:, :, 2]
-  @views @. v.vh = s.sol[:, :, 3]
-
-  # RHS[:, :, 4] = ph_t
   RHS = zeros(eltype(s.sol), size(s.sol))
   if forced
     calcN_forced!(RHS, s.sol, prob.t, s, v, p, g)
@@ -82,6 +78,9 @@ function usigvsig(prob, σ; forced=false)
     calcN!(RHS, s.sol, prob.t, s, v, p, g)
   end
   @. RHS += prob.eqn.LC * s.sol
+
+  @views @. v.uh = s.sol[:, :, 2]
+  @views @. v.vh = s.sol[:, :, 3]
 
   A_mul_B!(v.u, g.irfftplan, v.uh)
   A_mul_B!(v.v, g.irfftplan, v.vh)
@@ -96,7 +95,6 @@ function usigvsig(prob, σ; forced=false)
 end
 
 function waveapv(usig, vsig, f, sig, g)
-  
   j1 = real.(
     im.*jacobian(conj.(usig), usig, g) .+ im.*jacobian(conj.(vsig), vsig, g))
   j2 = real.(
