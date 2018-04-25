@@ -2,6 +2,8 @@ module TwoDTurbTools
 
 using TurbulenceTools, FourierFlows, FourierFlows.TwoDTurb, PyPlot, JLD2
 
+import FourierFlows.TwoDTurb: energy, enstrophy, dissipation, work, drag, updatevars!
+
 export cfl, getresidual, getdiags, savediags, restartchanproblem,
        runchanproblem, makechanproblem, initandrunchanproblem, makeplot,
        loadgridparams, loadtimestep, loadparams, loadlastsolution,
@@ -36,16 +38,16 @@ end
 """
     loadparams(filename)
 
-Returns ν, nν, μ, nμ from the FourierFlows output stored in filename.
+Returns nu, nnu, mu, nmu from the FourierFlows output stored in filename.
 """
 function loadparams(filename)
   file = jldopen(filename)
-   ν = file["params/ν"]
-  nν = file["params/nν"]
-   μ = file["params/μ"]
-  nμ = file["params/nμ"]
+   nu = file["params/nu"]
+  nnu = file["params/nnu"]
+   mu = file["params/mu"]
+  nmu = file["params/nmu"]
   close(file)
-  ν, nν, μ, nμ
+  nu, nnu, mu, nmu
 end
 
 """
@@ -84,7 +86,7 @@ function restartchanproblem(filename; ns=1, nt=1, tf=nothing,
   fullfilename = filename[end-5:end] != ".jld2" ? filename*".jld2" : filename
 
   nx, Lx, ny, Ly = loadgridparams(fullfilename)
-  ν, nν, μ, nμ = loadparams(fullfilename)  
+  nu, nnu, mu, nmu = loadparams(fullfilename)  
   fi, ki = loadforcingparams(fullfilename)
   dt = loadtimestep(fullfilename)
   step, t, sol = loadlastsolution(fullfilename) # Load last saved solution
@@ -95,9 +97,8 @@ function restartchanproblem(filename; ns=1, nt=1, tf=nothing,
     tf = t + nt*dt
   end
 
-  prob, diags, nt = makechanproblem(n=nx, L=Lx, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
-    fi=fi, ki=ki, tf=tf, stepper=stepper)
-
+  prob, diags, nt = makechanproblem(n=nx, L=Lx, nu=nu, nnu=nnu, mu=mu, nmu=nmu, dt=dt, fi=fi, ki=ki, tf=tf, 
+                                    stepper=stepper)
   prob.state.step = step
   prob.state.t = t
   prob.state.sol .= sol
@@ -105,10 +106,8 @@ function restartchanproblem(filename; ns=1, nt=1, tf=nothing,
 
   newfilename = fullfilename[1:end-5] * "_restart"
   output = getbasicoutput(prob; filename=newfilename)
+  runchanproblem(prob, diags, nt, fi; withplot=withplot, ns=ns, output=output, plotname=plotname)
 
-  runchanproblem(prob, diags, nt, fi; withplot=withplot, ns=ns, output=output,
-    plotname=plotname)
-  
   prob, diags, output
 end
 
@@ -118,10 +117,7 @@ end
 Returns the CFL number defined by CFL = max(u*dt/dX), where u = (U, V) is 
 the horizontal velocity and dX = (dx, dy) the grid spacing.
 """
-function cfl(prob)
-  prob.ts.dt*maximum(
-    [maximum(prob.vars.U)/prob.grid.dx, maximum(prob.vars.V)/prob.grid.dy])
-end
+cfl(prob) = prob.ts.dt*maximum([maximum(prob.vars.U)/prob.grid.dx, maximum(prob.vars.V)/prob.grid.dy])
 
 """
     getresidual(prob, E, I, D, R, ψ, F; i0=1)
@@ -132,7 +128,7 @@ Returns the residual defined by
   residual  =  --  -  I  +  D  + R, 
                dt
 
-where I = -<ψF>, D = ν<ψΔⁿζ>, and R = μ<ψΔⁿ¹ζ>, with n and n1 the order of 
+where I = -<ψF>, D = nu<ψΔⁿζ>, and R = mu<ψΔⁿ¹ζ>, with n and n1 the order of 
 hyper- and hypo-dissipation operators, respectively. For the stochastic case,
 care is needed to calculate I correctly.
 """
@@ -159,7 +155,7 @@ Returns a vector of Diagnostics that are meaningful in stochastically-forced
 two-dimensional turbulence problems.
 """
 function getdiags(prob, nt)
-  forcing(prob) = deepcopy(prob.vars.F)
+  forcing(prob) = deepcopy(prob.vars.Fh)
 
   getpsih(prob) = -prob.grid.invKKrsq.*prob.state.sol
 
@@ -206,19 +202,9 @@ function makeplot(prob, diags, fi; i₀=1)
   ylabel(L"y")
 
   sca(axs[2]); cla()
-
-  # dEdt = I - D - R?
-  #dEdt = (E[(i₀+1):E.count] - E[i₀:E.count-1])/prob.ts.dt
-  #ii = (i₀+1):E.count
-  #dEdt₁ = I[ii] - D[ii] - R[ii]
-  #residual = dEdt - dEdt₁
-
   plot(E[:time], -D[:], label="dissipation (\$D\$)")
   plot(E[:time], -R[:], label="drag (\$R\$)")
-  #plot(E.time[ii], dEdt,   label=L"E_t")
-  #plot(E.time[ii], residual, "c^", markersize=0.5, label="residual")
-  #plot(E.time[ii], I[ii], "o", markersize=0.5, label="injection (\$I\$)")
-
+  
   ylabel("Energy sources and sinks")
   xlabel(L"t")
   legend(fontsize=10, loc="lower right")
@@ -238,14 +224,13 @@ end
 
 Create and run a two-dimensional turbulence problem with the "Chan forcing".
 """
-function initandrunchanproblem(; n=128, L=2π, ν=4e-3, nν=1, 
-  μ=1e-1, nμ=0, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, θ=π/4, 
-  withplot=false, withoutput=false, stepper="RK4", plotname=nothing,
-  filename="default")
+function initandrunchanproblem(; n=128, L=2π, nu=4e-3, nnu=1, mu=1e-1, nmu=0, dt=1e-2, fi=1.0, ki=8, tf=10, ns=1, 
+                               θ=π/4, withplot=false, withoutput=false, stepper="RK4", plotname=nothing,
+                               filename="default")
 
-  prob, diags, nt = makechanproblem(n=n, L=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt,
-     fi=fi, ki=ki, tf=tf, stepper=stepper)
-  
+  prob, diags, nt = makechanproblem(n=n, L=L, nu=nu, nnu=nnu, mu=mu, nmu=nmu, dt=dt, fi=fi, ki=ki, tf=tf, 
+                                    stepper=stepper)
+     
   if withoutput
     output = getbasicoutput(prob; filename=filename)
     jldopen(output.filename, "r+") do file
@@ -256,8 +241,7 @@ function initandrunchanproblem(; n=128, L=2π, ν=4e-3, nν=1,
     output = nothing
   end
 
-  runchanproblem(prob, diags, nt, fi; withplot=withplot, ns=ns, output=output,
-    plotname=plotname)
+  runchanproblem(prob, diags, nt, fi; withplot=withplot, ns=ns, output=output, plotname=plotname)
 
   if withoutput; return prob, diags, output
   else;          return prob, diags
@@ -271,9 +255,8 @@ Returns a problem, vector of Diagnostics, and the number of timesteps for a
 two-dimensional turbulence problem forced by the "Chan forcing" 
 with the specified parameters.
 """
-function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1, 
-  μ=1e-1, nμ=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4", numdiags=Int(10^4))
-
+function makechanproblem(; n=128, L=2π, nu=1e-3, nnu=1, mu=1e-1, nmu=-1, dt=1e-2, fi=1.0, ki=8, tf=1, stepper="RK4",
+                         numdiags=Int(10^4))
   kii = ki*L/2π
   amplitude = fi*ki/sqrt(dt) * n^2/2
   function calcF!(F, sol, t, s, v, p, g)
@@ -295,8 +278,7 @@ function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1,
   end
 
   nt = round(Int, tf/dt)
-  prob = TwoDTurb.Problem(nx=n, Lx=L, ν=ν, nν=nν, μ=μ, nμ=nμ, dt=dt, 
-                          calcF=calcF!, stepper=stepper)
+  prob = TwoDTurb.Problem(nx=n, Lx=L, nu=nu, nnu=nnu, mu=mu, nmu=nmu, dt=dt, calcF=calcF!, stepper=stepper)
   numdiags = minimum([nt, numdiags])
   diags = getdiags(prob, numdiags)
 
@@ -304,8 +286,7 @@ function makechanproblem(; n=128, L=2π, ν=1e-3, nν=1,
 end
 
 """
-    runchanproblem(prob, diags, nt, fi; ns=1, withplot=false, output=nothing,
-                   plotname=nothing, message=nothing)
+    runchanproblem(prob, diags, nt, fi; ns=1, withplot=false, output=nothing, plotname=nothing, message=nothing)
 
 Run the problem "prob" with useful messages, making plots if withplot 
 and saving data if output is not nothing ns times. An optional additional 
@@ -313,8 +294,7 @@ message can be specified with the "message" keyword argument, where
 message(prob) is a function that returns a string. The string
 "plotname" should be specified without the ".png" suffix.
 """
-function runchanproblem(prob, diags, nt, fi; ns=1, withplot=false, output=nothing,
-                        plotname=nothing, message=nothing)
+function runchanproblem(prob, diags, nt, fi; ns=1, withplot=false, output=nothing, plotname=nothing, message=nothing)
 
   @printf("\nRunning Chan 2D turbulence problem for %d steps...\n", nt)
   if output != nothing; println("Output: $(output.filename)"); end
@@ -325,14 +305,7 @@ function runchanproblem(prob, diags, nt, fi; ns=1, withplot=false, output=nothin
     updatevars!(prob)
     saveoutput(output)
 
-    @printf("step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s\n", 
-            prob.step, prob.t, cfl(prob), tc)
-
-    #=
-    res = getresidual(prob, diags) # residual = dEdt - I + D + R
-
-    if message != nothing; println(message(prob)); end
-    =#
+    @printf("step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s\n", prob.step, prob.t, cfl(prob), tc)
 
     if withplot     
       makeplot(prob, diags, fi)
