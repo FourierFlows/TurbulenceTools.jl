@@ -16,7 +16,8 @@ Module structure:
 module TurbulenceTools
 using FourierFlows, PyPlot
 
-export makesquare!, ticksoff!, removespines!, getbasicoutput, axisright!
+#export makesquare!, ticksoff!, removespines!, getbasicoutput, axisright!
+export getbasicoutput #makesquare!, ticksoff!, removespines!, getbasicoutput, axisright!
 
 # Stuff to help with plotting
 makesquare!(ax) = ax[:set_aspect](1, adjustable="box")
@@ -53,5 +54,6 @@ end
 
 include("twodturbtools.jl")
 include("verticallycosinetools.jl")
+include("verticallyfouriertools.jl")
 
 end # module

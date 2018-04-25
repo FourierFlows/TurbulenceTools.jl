@@ -308,6 +308,7 @@ function runchanproblem(prob, diags, nt, fi; ns=1, withplot=false, output=nothin
     @printf("step: %04d, t: %.2e, cfl: %.3f, tc: %.2f s\n", prob.step, prob.t, cfl(prob), tc)
 
     if withplot     
+      close("all")
       makeplot(prob, diags, fi)
       if plotname != nothing
         fullplotname = @sprintf("%s_%09d.png", plotname, prob.step)
