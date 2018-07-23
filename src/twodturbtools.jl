@@ -156,7 +156,6 @@ two-dimensional turbulence problems.
 """
 function getdiags(prob, nt)
   forcing(prob) = deepcopy(prob.vars.Fh)
-
   getpsih(prob) = -prob.grid.invKKrsq.*prob.state.sol
 
   E = Diagnostic(energy,      prob, nsteps=nt)
